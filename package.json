@@ -1,0 +1,17 @@
+{
+  "name": "motordesk-spareparts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MotorDesk — Spare Parts ERP + Marketplace (React + Express + Prisma + PostgreSQL)",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "db:migrate": "npm run prisma:migrate --prefix server",
+    "db:seed": "npm run seed --prefix server",
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "start": "npm start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

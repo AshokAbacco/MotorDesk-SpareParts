@@ -1,0 +1,402 @@
+// server/prisma/schema.prisma
+// MotorDesk Spare Parts - ERP + Marketplace
+// Money is stored as Decimal(12,2). Selling prices are EXCLUSIVE of GST; MRP is inclusive.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── ENUMS ───────────────────────────
+
+enum Role {
+  ADMIN
+  VENDOR
+  CUSTOMER
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum VehicleType {
+  CAR
+  BIKE
+}
+
+// What a shop sells — decides which Car / Bike menus the vendor sees
+enum InventoryType {
+  CAR
+  BIKE
+  BOTH
+}
+
+enum OrderStatus {
+  AWAITING_PAYMENT // online order created, stock reserved, waiting for Razorpay
+  PENDING
+  ACCEPTED
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMode {
+  UPI
+  CASH
+  CARD
+  COD
+  ONLINE // Razorpay (UPI / card / netbanking / wallet)
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentPurpose {
+  MARKETPLACE_ORDER
+  SUBSCRIPTION
+}
+
+// ─────────────────────────── USERS ───────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String?  @unique
+  password  String
+  role      Role     @default(CUSTOMER)
+  isActive  Boolean  @default(true)
+  addresses Json? // [{ label, line1, city, state, pincode }]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor   Vendor?
+  orders   Order[]   @relation("CustomerOrders")
+  payments Payment[]
+
+  @@index([role])
+}
+
+model Vendor {
+  id            String        @id @default(uuid())
+  userId        String        @unique
+  shopName      String
+  gstin         String?
+  phone         String?
+  addressLine   String?
+  city          String?
+  state         String // used for CGST+SGST vs IGST
+  pincode       String?
+  logoUrl       String?
+  upiId         String? // e.g. sriramauto@okicici — customers pay this shop directly
+  upiName       String? // payee name shown in the UPI app
+  upiNumber     String? // UPI-linked mobile number (shown to customers as an alternative)
+  inventoryType InventoryType @default(BOTH) // chosen at registration; controls Car / Bike access
+  status        VendorStatus  @default(PENDING)
+  invoiceSeq    Int           @default(0) // per-vendor invoice counter
+  orderSeq      Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inventory     Inventory[]
+  orders        Order[]
+  invoices      Invoice[]
+  garages       Garage[]
+  expenses      Expense[]
+  subscriptions Subscription[]
+  products      Product[] // the shop's own catalog products
+
+  @@index([status])
+}
+
+// ─────────────────────────── CATALOG ───────────────────────────
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  category    String
+  subCategory String?
+  brand       String
+  oemNumber   String // unique per owner: once in the master catalog, once per shop (checked in products.service)
+  description String?
+  images      String[] // R2 public URLs
+  hsnCode     String?
+  gstRate     Decimal  @default(18) @db.Decimal(5, 2)
+  isActive    Boolean  @default(true)
+  vendorId    String? // null = master catalog (admin). Set = a shop's own product, visible only to that shop
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vendor          Vendor?          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vehicleMappings VehicleMapping[]
+  inventory       Inventory[]
+
+  @@unique([vendorId, oemNumber])
+  @@index([oemNumber])
+  @@index([category])
+  @@index([brand])
+  @@index([name])
+}
+
+model Vehicle {
+  id        String      @id @default(uuid())
+  type      VehicleType
+  brand     String
+  model     String
+  year      Int
+  createdAt DateTime    @default(now())
+
+  mappings VehicleMapping[]
+
+  @@unique([type, brand, model, year])
+  @@index([type, brand])
+}
+
+model VehicleMapping {
+  id        String @id @default(uuid())
+  productId String
+  vehicleId String
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, vehicleId])
+  @@index([vehicleId])
+}
+
+// ─────────────────────────── VENDOR INVENTORY ───────────────────────────
+
+model Inventory {
+  id                String   @id @default(uuid())
+  vendorId          String
+  productId         String
+  costPrice         Decimal  @default(0) @db.Decimal(12, 2) // purchase cost, used for P&L
+  price             Decimal  @db.Decimal(12, 2) // selling price excl. GST
+  mrp               Decimal  @db.Decimal(12, 2)
+  stock             Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  isListed          Boolean  @default(true) // visible on marketplace
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderItems   OrderItem[]
+  invoiceItems InvoiceItem[]
+
+  @@unique([vendorId, productId])
+  @@index([vendorId, stock])
+}
+
+// ─────────────────────────── ORDERS (MARKETPLACE) ───────────────────────────
+
+model Order {
+  id                String        @id @default(uuid())
+  orderNumber       String        @unique
+  customerId        String
+  vendorId          String
+  status            OrderStatus   @default(PENDING)
+  paymentMode       PaymentMode   @default(COD)
+  paymentStatus     PaymentStatus @default(PENDING)
+  subtotal          Decimal       @db.Decimal(12, 2)
+  taxTotal          Decimal       @db.Decimal(12, 2)
+  grandTotal        Decimal       @db.Decimal(12, 2)
+  shippingAddress   Json
+  statusHistory     Json          @default("[]") // [{ status, at }]
+  paymentId         String? // Razorpay payment covering this order (one payment can cover several shops' orders)
+  upiRef            String? // UTR / UPI reference the customer submitted after paying the shop directly
+  upiSubmittedAt    DateTime?
+  paymentVerifiedAt DateTime? // when the shop confirmed the UPI money arrived
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  customer User        @relation("CustomerOrders", fields: [customerId], references: [id])
+  vendor   Vendor      @relation(fields: [vendorId], references: [id])
+  payment  Payment?    @relation(fields: [paymentId], references: [id])
+  items    OrderItem[]
+  invoice  Invoice?
+
+  @@index([vendorId, status])
+  @@index([customerId])
+  @@index([paymentId])
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  inventoryId String
+  productName String // snapshot
+  oemNumber   String // snapshot
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(12, 2)
+  gstRate     Decimal @db.Decimal(5, 2)
+  lineTotal   Decimal @db.Decimal(12, 2) // incl. GST
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+}
+
+// ─────────────────────────── INVOICES (POS + ORDERS) ───────────────────────────
+
+model Invoice {
+  id            String      @id @default(uuid())
+  invoiceNumber String
+  vendorId      String
+  orderId       String?     @unique
+  garageId      String?
+  customerName  String?
+  customerPhone String?
+  customerGstin String?
+  placeOfSupply String // state
+  paymentMode   PaymentMode
+  subtotal      Decimal     @db.Decimal(12, 2)
+  discount      Decimal     @default(0) @db.Decimal(12, 2)
+  cgst          Decimal     @default(0) @db.Decimal(12, 2)
+  sgst          Decimal     @default(0) @db.Decimal(12, 2)
+  igst          Decimal     @default(0) @db.Decimal(12, 2)
+  grandTotal    Decimal     @db.Decimal(12, 2)
+  pdfUrl        String?
+  createdAt     DateTime    @default(now())
+
+  vendor Vendor        @relation(fields: [vendorId], references: [id])
+  order  Order?        @relation(fields: [orderId], references: [id])
+  garage Garage?       @relation(fields: [garageId], references: [id])
+  items  InvoiceItem[]
+
+  @@unique([vendorId, invoiceNumber])
+  @@index([vendorId, createdAt])
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  inventoryId String
+  productName String
+  oemNumber   String
+  hsnCode     String?
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(12, 2)
+  costPrice   Decimal @default(0) @db.Decimal(12, 2) // snapshot for gross profit
+  gstRate     Decimal @db.Decimal(5, 2)
+  taxAmount   Decimal @db.Decimal(12, 2)
+  lineTotal   Decimal @db.Decimal(12, 2)
+
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+}
+
+// ─────────────────────────── GARAGES (B2B customers) ───────────────────────────
+
+model Garage {
+  id        String   @id @default(uuid())
+  vendorId  String
+  name      String
+  ownerName String?
+  phone     String
+  gstin     String?
+  address   String?
+  state     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor   Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@unique([vendorId, phone])
+}
+
+// ─────────────────────────── EXPENSES (P&L) ───────────────────────────
+
+model Expense {
+  id        String   @id @default(uuid())
+  vendorId  String
+  title     String
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId, date])
+}
+
+// ─────────────────────────── SAAS PLANS ───────────────────────────
+
+model Plan {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  price        Decimal  @db.Decimal(10, 2)
+  durationDays Int
+  maxSkus      Int
+  features     String[]
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        String             @id @default(uuid())
+  vendorId  String
+  planId    String
+  status    SubscriptionStatus @default(ACTIVE)
+  startDate DateTime           @default(now())
+  endDate   DateTime
+  createdAt DateTime           @default(now())
+
+  paymentId String? @unique
+
+  vendor  Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  plan    Plan     @relation(fields: [planId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([vendorId, status])
+}
+
+// ─────────────────────────── PAYMENTS (RAZORPAY) ───────────────────────────
+
+model Payment {
+  id                String         @id @default(uuid())
+  provider          String         @default("RAZORPAY")
+  purpose           PaymentPurpose
+  userId            String
+  vendorId          String? // subscription payments
+  planId            String? // subscription payments
+  razorpayOrderId   String         @unique
+  razorpayPaymentId String?        @unique
+  amount            Int // in paise
+  currency          String         @default("INR")
+  status            PaymentStatus  @default(PENDING)
+  failureReason     String?
+  refundedAmount    Int            @default(0) // paise
+  paidAt            DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  orders       Order[]
+  subscription Subscription?
+
+  @@index([status, createdAt])
+}
