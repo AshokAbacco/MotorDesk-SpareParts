@@ -17,7 +17,7 @@ const schema = z.object({
   PORT: z.coerce.number().default(5000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
-  JWT_EXPIRES_IN: z.string().default('7d'),
+  JWT_EXPIRES_IN: z.string().default('30d'), // renewed automatically while the user keeps using the app
   BCRYPT_SALT_ROUNDS: z.coerce.number().default(10),
   CLIENT_URL: z.string().default('http://localhost:5173'),
 
