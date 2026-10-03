@@ -23,12 +23,17 @@ const ADD_NEW = '__add_new__'; // special dropdown value → opens the "Add new 
  * One form for both logins:
  *  - Admin (Products page) → master catalog product, visible to every shop
  *  - Vendor (Car / Bike catalog page) → the shop's own product; fitment limited to the shop's inventory type
- * defaultType: 'CAR' | 'BIKE' — which fitment tab opens first (the catalog page passes its own type)
+ * defaultType: 'CAR' | 'BIKE' — which fitment tab opens first for a NEW product (the catalog page passes its own type).
+ * Editing opens on the product's own type. A product is either a Car part or a Bike part:
+ * switching the tab to the other type (after confirming) removes the old type's vehicles.
  */
 export default function ProductForm({ product, open, onClose, onSaved, defaultType = 'CAR' }) {
   const { isVendor, vendor } = useAuth();
   const vehicleTypes = isVendor ? allowedVehicles(vendor?.inventoryType) : ['CAR', 'BIKE'];
-  const startType = vehicleTypes.includes(defaultType) ? defaultType : vehicleTypes[0];
+  // Editing → open on the type the product already fits; new product → the page's type
+  const productType = product?.vehicleMappings?.[0]?.vehicle?.type;
+  const wanted = productType ?? defaultType;
+  const startType = vehicleTypes.includes(wanted) ? wanted : vehicleTypes[0];
   const [form, setForm] = useState(EMPTY);
   const [vehicles, setVehicles] = useState([]); // selected vehicle objects
   const [pick, setPick] = useState({ type: startType, brand: '', model: '' });
@@ -45,7 +50,9 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
       setForm(EMPTY);
       setVehicles([]);
     }
-    setPick({ type: startType, brand: '', model: '' });
+    // Editing → show the product's first fitted vehicle in the Brand / Model dropdowns (years load below them)
+    const first = product?.vehicleMappings?.find((m) => m.vehicle.type === startType)?.vehicle;
+    setPick({ type: startType, brand: first?.brand ?? '', model: first?.model ?? '' });
     setAdding(null);
   }, [product, open, startType]);
 
@@ -62,6 +69,20 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
   const selectedIds = new Set(vehicles.map((v) => v.id));
   const toggle = (v) => setVehicles(selectedIds.has(v.id) ? vehicles.filter((x) => x.id !== v.id) : [...vehicles, v]);
   const addAllYears = () => setVehicles([...vehicles, ...opts.years.filter((v) => !selectedIds.has(v.id))]);
+
+  /** Car ⇄ Bike: a part is for one vehicle type, so the other type's vehicles are removed (after confirming) */
+  const switchType = (type) => {
+    if (type === pick.type) return;
+    const other = vehicles.filter((v) => v.type !== type);
+    if (other.length) {
+      const label = type === 'BIKE' ? 'Bike' : 'Car';
+      const names = [...new Set(other.map((v) => `${v.brand} ${v.model}`))].join(', ');
+      if (!window.confirm(`Change this part to a ${label} part?\n\nThese ${type === 'BIKE' ? 'car' : 'bike'} vehicles will be removed from the fitment:\n${names}`)) return;
+      setVehicles(vehicles.filter((v) => v.type === type));
+    }
+    setAdding(null);
+    setPick({ type, brand: '', model: '' });
+  };
 
   const onBrandChange = (e) => {
     if (e.target.value === ADD_NEW) return setAdding('brand');
@@ -89,7 +110,7 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
   // Group selected fitment for compact chips: "Hyundai Creta 2020–2024"
   const groups = Object.values(vehicles.reduce((acc, v) => {
     const k = `${v.type}|${v.brand}|${v.model}`;
-    (acc[k] ??= { key: k, type: v.type, label: `${v.brand} ${v.model}`, items: [] }).items.push(v);
+    (acc[k] ??= { key: k, type: v.type, brand: v.brand, model: v.model, label: `${v.brand} ${v.model}`, items: [] }).items.push(v);
     return acc;
   }, {}));
 
@@ -136,7 +157,7 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
           <div className="grid gap-2 sm:grid-cols-[auto_1fr_1fr]">
             <div className="flex rounded-lg bg-slate-100 p-1">
               {VEHICLE_TABS.filter(([t]) => vehicleTypes.includes(t)).map(([t, Icon]) => (
-                <button type="button" key={t} onClick={() => { setAdding(null); setPick({ type: t, brand: '', model: '' }); }} className={`flex items-center gap-1 rounded-md px-3 py-1 text-sm ${pick.type === t ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>
+                <button type="button" key={t} onClick={() => switchType(t)} className={`flex items-center gap-1 rounded-md px-3 py-1 text-sm ${pick.type === t ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>
                   <Icon className="h-4 w-4" /> {t === 'CAR' ? 'Car' : 'Bike'}
                 </button>
               ))}
@@ -178,9 +199,14 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
             {groups.map((g) => {
               const ys = g.items.map((v) => v.year);
               return (
-                <span key={g.key} className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-                  {g.type === 'BIKE' ? <Bike className="h-3 w-3" /> : <Car className="h-3 w-3" />} {g.label} {Math.min(...ys)}–{Math.max(...ys)} ({ys.length})
-                  <button type="button" onClick={() => setVehicles(vehicles.filter((v) => !g.items.includes(v)))} aria-label="Remove"><X className="h-3 w-3" /></button>
+                <span key={g.key}
+                  className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${pick.brand === g.brand && pick.model === g.model ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : 'bg-slate-100 text-slate-700'}`}>
+                  {/* Click a chip → load that brand & model into the dropdowns to change its years */}
+                  <button type="button" onClick={() => { setAdding(null); setPick({ type: g.type, brand: g.brand, model: g.model }); }}
+                    className="flex items-center gap-1 hover:underline" title="Show in Brand / Model to change years">
+                    {g.type === 'BIKE' ? <Bike className="h-3 w-3" /> : <Car className="h-3 w-3" />} {g.label} {Math.min(...ys)}–{Math.max(...ys)} ({ys.length})
+                  </button>
+                  <button type="button" onClick={() => setVehicles(vehicles.filter((v) => !g.items.includes(v)))} aria-label={`Remove ${g.label}`}><X className="h-3 w-3" /></button>
                 </span>
               );
             })}
