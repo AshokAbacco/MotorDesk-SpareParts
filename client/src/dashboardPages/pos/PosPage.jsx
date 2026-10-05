@@ -67,13 +67,18 @@ export default function PosPage() {
         <div className="flex-1 overflow-y-auto px-4"><PosCart /></div>
 
         <div className="space-y-3 border-t border-slate-200 bg-slate-50 p-4">
-          <Select
-            value={cart.customer.garageId}
-            onChange={(e) => cart.setCustomer({ garageId: e.target.value })}
-            options={garages.map((g) => ({ value: g.id, label: `${g.name} · ${g.phone}` }))}
-            placeholder="Walk-in customer"
-            aria-label="Customer"
-          />
+          {/* Walk-in, one of your own garages, or a garage registered on the MotorDesk Garage CRM */}
+          <select className="field" value={cart.customer.garageId} onChange={(e) => cart.setCustomer({ garageId: e.target.value })} aria-label="Customer">
+            <option value="">Walk-in customer</option>
+            {[['OWN', 'Your garages'], ['MOTORDESK', 'MotorDesk garages']].map(([src, label]) => {
+              const list = garages.filter((g) => g.source === src);
+              return list.length > 0 && (
+                <optgroup key={src} label={label}>
+                  {list.map((g) => <option key={g.id} value={g.id}>{[g.name, g.phone].filter(Boolean).join(' · ')}</option>)}
+                </optgroup>
+              );
+            })}
+          </select>
           {!cart.customer.garageId && (
             <div className="grid grid-cols-2 gap-2">
               <Input placeholder="Customer name" value={cart.customer.customerName} onChange={(e) => cart.setCustomer({ customerName: e.target.value })} aria-label="Customer name" />

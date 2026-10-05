@@ -1,6 +1,7 @@
 // server/src/pos/pos.service.js
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
+import { getCrmGarage, isCrmGarageId } from '../garages/garageCrm.js';
 import { calculateGst } from '../utils/gst.js';
 import { nextInvoiceNumber } from '../utils/invoiceNumber.js';
 
@@ -31,8 +32,17 @@ async function buildLines(db, vendorId, items) {
   });
 }
 
+/**
+ * Who the bill is for. `garage` is this shop's own garage (linked by garageId);
+ * `crmGarage` is a MotorDesk Garage CRM garage — only its CRM id is stored on the bill, plus the usual
+ * name / phone / GSTIN snapshot every bill keeps.
+ */
 async function resolveBuyerState(db, vendorId, { garageId, customerState }) {
   if (!garageId) return { garage: null, buyerState: customerState };
+  if (isCrmGarageId(garageId)) {
+    const crmGarage = await getCrmGarage(garageId);
+    return { garage: null, crmGarage, buyerState: crmGarage.state || customerState };
+  }
   const garage = await db.garage.findFirst({ where: { id: garageId, vendorId } });
   if (!garage) throw ApiError.notFound('Garage not found');
   return { garage, buyerState: garage.state || customerState };
@@ -47,9 +57,13 @@ export async function quote(vendor, body) {
 
 /** Completes a counter sale: deducts stock and creates the GST invoice — all atomic */
 export async function checkout(vendor, body) {
+  // Look up a MotorDesk garage before the DB transaction (the CRM can be slow to answer; the
+  // transaction then reads it from the in-memory cache instantly)
+  if (isCrmGarageId(body.garageId)) await getCrmGarage(body.garageId);
+
   return prisma.$transaction(async (tx) => {
     const lines = await buildLines(tx, vendor.id, body.items);
-    const { garage, buyerState } = await resolveBuyerState(tx, vendor.id, body);
+    const { garage, crmGarage, buyerState } = await resolveBuyerState(tx, vendor.id, body);
     const gst = calculateGst(lines, { sellerState: vendor.state, buyerState, discount: body.discount });
 
     // Deduct stock with a guard so two counters can't oversell the same part
@@ -66,9 +80,10 @@ export async function checkout(vendor, body) {
         invoiceNumber: await nextInvoiceNumber(tx, vendor.id),
         vendorId: vendor.id,
         garageId: garage?.id,
-        customerName: garage?.name ?? body.customerName,
-        customerPhone: garage?.phone ?? (body.customerPhone || null),
-        customerGstin: garage?.gstin ?? (body.customerGstin || null),
+        crmGarageId: crmGarage?.crmId,
+        customerName: (garage ?? crmGarage)?.name ?? body.customerName,
+        customerPhone: (garage ?? crmGarage)?.phone ?? (body.customerPhone || null),
+        customerGstin: (garage ?? crmGarage)?.gstin ?? (body.customerGstin || null),
         placeOfSupply: buyerState || vendor.state,
         paymentMode: body.paymentMode,
         subtotal: gst.subtotal,

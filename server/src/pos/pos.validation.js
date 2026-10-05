@@ -13,7 +13,8 @@ export const checkoutSchema = z
       )
       .min(1, 'Cart is empty'),
     paymentMode: z.enum(['UPI', 'CASH', 'CARD']),
-    garageId: z.string().uuid().optional(),
+    // Own garage (uuid) or a MotorDesk Garage CRM garage ("md-<id>")
+    garageId: z.string().trim().refine((v) => /^md-\d+$/.test(v) || z.string().uuid().safeParse(v).success, 'Invalid garage').optional(),
     customerName: z.string().trim().max(100).optional(),
     customerPhone: z.string().trim().regex(/^[6-9]\d{9}$/).optional().or(z.literal('')),
     customerGstin: z.string().trim().toUpperCase().optional().or(z.literal('')),

@@ -5,6 +5,7 @@ export const garageSchema = z.object({
   name: z.string().trim().min(2),
   ownerName: z.string().trim().optional(),
   phone: z.string().trim().regex(/^[6-9]\d{9}$/, 'Invalid mobile number'),
+  email: z.string().trim().toLowerCase().email('Invalid email').optional().or(z.literal('')),
   gstin: z.string().trim().toUpperCase().optional().or(z.literal('')),
   address: z.string().trim().optional(),
   state: z.string().trim().optional(),
@@ -14,6 +15,7 @@ export const updateGarageSchema = garageSchema.partial();
 
 export const listGaragesQuery = z.object({
   q: z.string().trim().optional(),
+  source: z.enum(['ALL', 'MOTORDESK', 'OWN']).default('ALL'), // tabs on the Garages (B2B) page
   page: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().optional(),
 });

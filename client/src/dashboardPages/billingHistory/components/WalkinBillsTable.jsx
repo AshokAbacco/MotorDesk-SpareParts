@@ -18,7 +18,7 @@ export default function WalkinBillsTable({ rows, loading, onOpen }) {
       render: (b) => (
         <div>
           <p className="text-slate-800">{b.garage?.name ?? b.customerName ?? 'Walk-in customer'}</p>
-          <p className="text-xs text-slate-500">{b.garage ? 'Garage (B2B)' : 'Walk-in'}{(b.garage?.phone ?? b.customerPhone) ? ` · ${b.garage?.phone ?? b.customerPhone}` : ''}</p>
+          <p className="text-xs text-slate-500">{b.garage ? 'Garage (B2B)' : b.crmGarageId ? 'MotorDesk garage (B2B)' : 'Walk-in'}{(b.garage?.phone ?? b.customerPhone) ? ` · ${b.garage?.phone ?? b.customerPhone}` : ''}</p>
         </div>
       ),
     },

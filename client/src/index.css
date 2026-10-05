@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* client/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,4 +9,9 @@
   .label { @apply mb-1 block text-sm font-medium text-slate-700; }
   .field { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100; }
   .page-title { @apply text-xl font-semibold text-slate-900 sm:text-2xl; }
+}
+
+/* Landing page: respect "reduce motion" — the parts tray stops floating */
+@media (prefers-reduced-motion: reduce) {
+  .animate-float { animation: none !important; }
 }

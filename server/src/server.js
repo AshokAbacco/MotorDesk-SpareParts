@@ -2,6 +2,7 @@
 import app from './app.js';
 import { env, isR2Configured, isRazorpayConfigured, r2KeyProblems } from './config/env.js';
 import { prisma } from './config/prisma.js';
+import { purgeOld as purgeOldNotifications } from './notifications/notifications.service.js';
 import { releaseExpiredUpi } from './orders/orders.service.js';
 import { releaseExpired } from './payments/payments.service.js';
 
@@ -25,6 +26,7 @@ async function start() {
     Promise.all([releaseExpired(), releaseExpiredUpi()])
       .then(([a, b]) => a + b && console.log(`🧹 Released ${a + b} unpaid online checkout(s)`))
       .catch((e) => console.error('Payment sweep failed:', e.message));
+    purgeOldNotifications().catch((e) => console.error('Notification cleanup failed:', e.message));
   }, 5 * 60 * 1000);
   sweeper.unref();
 

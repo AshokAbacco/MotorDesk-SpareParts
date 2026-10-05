@@ -1,11 +1,13 @@
+// client/src/landingPages/myOrders/MyOrdersPage.jsx
 import { Package, Store } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import useAuth from '../../shared/hooks/useAuth.js';
 import useFetch from '../../shared/hooks/useFetch.js';
 import Button from '../../shared/ui/Button.jsx';
 import EmptyState from '../../shared/ui/EmptyState.jsx';
+import { NOTIFICATION_EVENT } from '../../shared/notifications.api.js';
 import Pagination from '../../shared/ui/Pagination.jsx';
 import Spinner from '../../shared/ui/Spinner.jsx';
 import { formatCurrency } from '../../shared/utils/formatCurrency.js';
@@ -14,10 +16,33 @@ import { PAYMENT_LABELS } from '../../shared/utils/constants.js';
 import OrderTracker from './components/OrderTracker.jsx';
 import { cancelMyOrder, getMyOrders } from './myOrders.api.js';
 
+/** "Rear Brake Shoe Set" or "Air Filter + 2 more" */
+const orderTitle = (o) => {
+  const [first, ...rest] = o.items;
+  return `${first?.productName ?? 'Order'}${rest.length ? ` + ${rest.length} more` : ''}`;
+};
+/** Distinct HSN codes of the parts in the order, e.g. "85122010" or "87083000, 84212300" */
+const hsnCodes = (o) => [...new Set(o.items.map((i) => i.hsnCode).filter(Boolean))].join(', ');
+
 export default function MyOrdersPage() {
   const { isLoggedIn, isCustomer } = useAuth();
   const [page, setPage] = useState(1);
   const { data, meta, loading, reload } = useFetch(() => (isCustomer ? getMyOrders({ page, limit: 10 }) : Promise.resolve({ data: [] })), [page, isCustomer]);
+
+  // Opened from a notification (/my-orders?order=<id>) → scroll to that order and highlight it
+  const [searchParams] = useSearchParams();
+  const highlight = searchParams.get('order');
+  useEffect(() => {
+    if (!highlight || loading) return;
+    if (page !== 1 && !data?.some((o) => o.id === highlight)) { setPage(1); return; }
+    document.getElementById(`order-${highlight}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlight, loading, data, page]);
+
+  // A new notification arrived (shop accepted / shipped …) → refresh the list
+  useEffect(() => {
+    window.addEventListener(NOTIFICATION_EVENT, reload);
+    return () => window.removeEventListener(NOTIFICATION_EVENT, reload);
+  }, [reload]);
 
   if (!isLoggedIn) return <Navigate to="/login?next=/my-orders" replace />;
 
@@ -34,11 +59,13 @@ export default function MyOrdersPage() {
       ) : (
         <div className="space-y-4">
           {data.map((o) => (
-            <div key={o.id} className="card p-4 sm:p-5">
+            <div key={o.id} id={`order-${o.id}`} className={`card scroll-mt-24 p-4 transition-shadow sm:p-5 ${o.id === highlight ? 'ring-2 ring-brand-500 ring-offset-2' : ''}`}>
               <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-slate-800">#{o.orderNumber}</p>
-                  <p className="flex items-center gap-1 text-xs text-slate-500"><Store className="h-3 w-3" /> {o.vendor.shopName} · {formatDateTime(o.createdAt)}</p>
+                <div className="min-w-0">
+                  {/* Part name instead of the order number; HSN code(s) in small text under it */}
+                  <p className="font-semibold text-slate-800">{orderTitle(o)}</p>
+                  {hsnCodes(o) && <p className="text-xs text-slate-500">HSN {hsnCodes(o)}</p>}
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500"><Store className="h-3 w-3" /> {o.vendor.shopName} · {formatDateTime(o.createdAt)}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">{formatCurrency(o.grandTotal)}</p>

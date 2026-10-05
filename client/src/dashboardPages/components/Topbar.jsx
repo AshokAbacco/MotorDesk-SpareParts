@@ -1,11 +1,13 @@
+// client/src/dashboardPages/components/Topbar.jsx
 import { LogOut, Menu, Store } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../../shared/hooks/useAuth.js';
+import NotificationBell from '../../shared/ui/NotificationBell.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import { useUiStore } from '../store/uiStore.js';
 
 export default function Topbar() {
-  const { user, vendor, logout } = useAuth();
+  const { user, vendor, isVendor, logout } = useAuth();
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const navigate = useNavigate();
 
@@ -20,6 +22,8 @@ export default function Topbar() {
         </div>
       )}
       <div className="ml-auto flex items-center gap-3">
+        {/* Order notifications (new orders, cancellations, payments) */}
+        {isVendor && <NotificationBell key={user.id} />}
         <div className="hidden text-right sm:block">
           <p className="text-sm font-medium text-slate-800">{user?.name}</p>
           <p className="text-xs text-slate-500">{user?.role?.toLowerCase()}</p>

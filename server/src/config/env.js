@@ -31,6 +31,11 @@ const schema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
   PAYMENT_HOLD_MINUTES: z.coerce.number().int().min(5).default(30), // stock reserved while customer pays
+
+  // MotorDesk Garage CRM (auto-garage-crm) — garages registered there are shown to every shop
+  GARAGE_CRM_API_URL: cleanKey,   // e.g. https://auto-garage-crm-zrxc.onrender.com
+  GARAGE_CRM_API_KEY: cleanKey,   // = EXTERNAL_API_KEY in the Garage CRM server's .env
+  GARAGE_CRM_CACHE_MINUTES: z.coerce.number().min(1).default(5),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -64,3 +69,4 @@ export const isR2Configured = Boolean(
     r2KeyProblems.length === 0
 );
 export const isRazorpayConfigured = Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+export const isGarageCrmConfigured = Boolean(env.GARAGE_CRM_API_URL && env.GARAGE_CRM_API_KEY);

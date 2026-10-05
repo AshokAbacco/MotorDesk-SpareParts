@@ -275,7 +275,7 @@ export async function buildWalkinWorkbook({ shop, rows, range }) {
     date: inv.createdAt,
     time: inv.createdAt,
     customer: inv.garage?.name ?? inv.customerName ?? 'Walk-in customer',
-    type: inv.garage ? 'Garage (B2B)' : 'Walk-in',
+    type: inv.garage ? 'Garage (B2B)' : inv.crmGarageId ? 'MotorDesk garage (B2B)' : 'Walk-in',
     phone: inv.garage?.phone ?? inv.customerPhone ?? '',
     gstin: inv.garage?.gstin ?? inv.customerGstin ?? '',
     itemsList: itemsText(inv.items),

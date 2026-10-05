@@ -1,13 +1,17 @@
+// client/src/dashboardPages/orders/OrdersPage.jsx
 import { Search } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import useDebounce from '../../shared/hooks/useDebounce.js';
 import useFetch from '../../shared/hooks/useFetch.js';
 import Input from '../../shared/ui/Input.jsx';
+import { NOTIFICATION_EVENT } from '../../shared/notifications.api.js';
 import Pagination from '../../shared/ui/Pagination.jsx';
 import { ORDER_STATUSES } from '../../shared/utils/constants.js';
 import OrderDetailsDrawer from './components/OrderDetailsDrawer.jsx';
 import OrdersTable from './components/OrdersTable.jsx';
-import { getVendorOrders } from './orders.api.js';
+import { getVendorOrder, getVendorOrders } from './orders.api.js';
 
 const TABS = ['', ...ORDER_STATUSES];
 
@@ -22,6 +26,21 @@ export default function OrdersPage() {
   const { data, meta, loading, reload } = useFetch(() => getVendorOrders(params), [JSON.stringify(params)]);
 
   const onUpdated = (order) => { setOpen(order); reload(); };
+
+  // Opened from a notification (/vendor/orders?order=<id>) → show that order's details
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedId = searchParams.get('order');
+  useEffect(() => {
+    if (!linkedId) return;
+    getVendorOrder(linkedId).then((r) => setOpen(r.data)).catch((e) => toast.error(e.message));
+    setSearchParams({}, { replace: true });
+  }, [linkedId, setSearchParams]);
+
+  // A new notification arrived while this page is open → refresh the list
+  useEffect(() => {
+    window.addEventListener(NOTIFICATION_EVENT, reload);
+    return () => window.removeEventListener(NOTIFICATION_EVENT, reload);
+  }, [reload]);
 
   return (
     <div className="space-y-4">

@@ -1,7 +1,9 @@
+// server/src/payments/payments.service.js
 import crypto from 'node:crypto';
 import { env, isRazorpayConfigured } from '../config/env.js';
 import { prisma } from '../config/prisma.js';
 import { RAZORPAY_KEY_ID, razorpay } from '../config/razorpay.js';
+import { notifyOrders } from '../notifications/notifications.service.js';
 import { activateSubscription } from '../subscriptions/subscriptions.service.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -156,6 +158,12 @@ export async function markPaid(razorpayOrderId, razorpayPaymentId) {
       console.error('Auto-refund of late payment failed — refund manually in Razorpay:', razorpayPaymentId, err?.error ?? err);
     }
     throw ApiError.conflict('Your payment arrived after the reservation expired. It is being refunded automatically.');
+  }
+
+  // First time this payment is marked paid → tell the customer and each shop (webhook + browser callback both land here)
+  if (!result.alreadyPaid && result.payment.purpose === 'MARKETPLACE_ORDER') {
+    const orders = await prisma.order.findMany({ where: { paymentId: result.payment.id, status: 'PENDING' }, select: { id: true } });
+    await notifyOrders(orders.map((o) => o.id), 'PAID_ONLINE');
   }
   return result.payment;
 }

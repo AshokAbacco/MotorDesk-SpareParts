@@ -2,6 +2,7 @@
 import { Cog, LayoutDashboard, LogOut, Package, ShoppingCart, User, UserCircle } from 'lucide-react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import useAuth from '../../shared/hooks/useAuth.js';
+import NotificationBell from '../../shared/ui/NotificationBell.jsx';
 import { APP_NAME } from '../../shared/utils/constants.js';
 import { homeForRole } from '../store/authStore.js';
 import { selectCartCount, useShopCartStore } from '../store/shopCartStore.js';
@@ -42,6 +43,9 @@ export default function Navbar() {
               <UserCircle className="h-4 w-4" /> <span className="hidden sm:inline">Account</span>
             </NavLink>
           )}
+
+          {/* Order updates (accepted, shipped, delivered…) */}
+          {isCustomer && <NotificationBell key={user.id} />}
 
           <button onClick={openDrawer} className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Open cart">
             <ShoppingCart className="h-5 w-5" />

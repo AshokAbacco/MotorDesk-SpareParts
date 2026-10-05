@@ -1,6 +1,8 @@
+// server/src/orders/orders.service.js
 import { ORDER_TRANSITIONS } from '../constants/orderStatus.js';
 import { prisma } from '../config/prisma.js';
 import { createFromOrder } from '../invoices/invoices.service.js';
+import { notifyOrder, notifyOrders } from '../notifications/notifications.service.js';
 import { createPayment, ensureRazorpay, refundOrder } from '../payments/payments.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
@@ -91,7 +93,11 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
     return orders;
   });
 
-  if (!online) return { orders, payment: null };
+  // ONLINE checkouts are announced once Razorpay confirms the payment (payments.service → markPaid)
+  if (!online) {
+    await notifyOrders(orders.map((o) => o.id), upi ? 'PLACED_AWAITING_UPI' : 'PLACED');
+    return { orders, payment: null };
+  }
 
   const total = orders.reduce((n, o) => n + Number(o.grandTotal), 0);
   try {
@@ -117,7 +123,17 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
 }
 
 
-async function listWhere(where, query, { showAwaiting = false } = {}) {
+// Customer "My orders" also shows each part's HSN code (from the product), so items carry hsnCode
+const customerInclude = {
+  ...include,
+  items: { include: { inventory: { select: { product: { select: { hsnCode: true } } } } } },
+};
+const withHsn = (order) => ({
+  ...order,
+  items: order.items.map(({ inventory, ...item }) => ({ ...item, hsnCode: inventory?.product?.hsnCode ?? null })),
+});
+
+async function listWhere(where, query, { showAwaiting = false, forCustomer = false } = {}) {
   const pg = getPagination(query);
   // Unpaid checkouts are hidden from shops; customers see them so they can finish paying
   where.status = query.status ?? (showAwaiting ? undefined : { not: 'AWAITING_PAYMENT' });
@@ -128,13 +144,13 @@ async function listWhere(where, query, { showAwaiting = false } = {}) {
     ];
   }
   const [items, total] = await prisma.$transaction([
-    prisma.order.findMany({ where, include, orderBy: { createdAt: 'desc' }, skip: pg.skip, take: pg.take }),
+    prisma.order.findMany({ where, include: forCustomer ? customerInclude : include, orderBy: { createdAt: 'desc' }, skip: pg.skip, take: pg.take }),
     prisma.order.count({ where }),
   ]);
-  return { items, meta: buildMeta(total, pg) };
+  return { items: forCustomer ? items.map(withHsn) : items, meta: buildMeta(total, pg) };
 }
 
-export const listForCustomer = (customerId, query) => listWhere({ customerId }, query, { showAwaiting: true });
+export const listForCustomer = (customerId, query) => listWhere({ customerId }, query, { showAwaiting: true, forCustomer: true });
 export const listForVendor = (vendorId, query) => listWhere({ vendorId }, query);
 
 export async function getById(id, { customerId, vendorId }) {
@@ -165,7 +181,7 @@ export async function updateStatus(vendorId, id, status) {
     refunded = await refundOrder(current);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({ where: { id, vendorId }, include: { items: true } });
     if (!order) throw ApiError.notFound('Order not found');
     if (!ORDER_TRANSITIONS[order.status].includes(status)) {
@@ -189,6 +205,8 @@ export async function updateStatus(vendorId, id, status) {
     });
     return tx.order.findUnique({ where: { id }, include });
   });
+  await notifyOrder(id, status === 'CANCELLED' ? 'CANCELLED_BY_SHOP' : status);
+  return updated;
 }
 
 /** Customer can cancel only before the shop accepts */
@@ -202,7 +220,7 @@ export async function cancelByCustomer(customerId, id) {
   }
   const refunded = await refundOrder(current);
 
-  return prisma.$transaction(async (tx) => {
+  const cancelled = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({ where: { id, customerId }, include: { items: true } });
     if (!order) throw ApiError.notFound('Order not found');
     if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') throw ApiError.badRequest('Order already accepted by the shop and cannot be cancelled');
@@ -217,6 +235,9 @@ export async function cancelByCustomer(customerId, id) {
       include,
     });
   });
+  // The shop is only told if it could see the order (unpaid UPI checkouts are hidden from shops)
+  await notifyOrder(id, 'CANCELLED_BY_CUSTOMER', { shopSawIt: current.status === 'PENDING' });
+  return cancelled;
 }
 
 // ─────────────── Direct UPI payments (customer → shop's own UPI ID) ───────────────
@@ -262,7 +283,7 @@ export async function submitUpiRef(customerId, id, utr) {
   if (dup) throw ApiError.conflict('This UPI reference number was already used for another order');
 
   const first = order.status === 'AWAITING_PAYMENT';
-  return prisma.order.update({
+  const updated = await prisma.order.update({
     where: { id },
     data: {
       upiRef: utr,
@@ -272,11 +293,13 @@ export async function submitUpiRef(customerId, id, utr) {
     },
     include,
   });
+  await notifyOrder(id, 'UPI_SUBMITTED');
+  return updated;
 }
 
 /** Shop checks its UPI/bank app and confirms (or rejects) the payment */
 export async function verifyUpiPayment(vendorId, id, action) {
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({ where: { id, vendorId, paymentMode: 'UPI' }, include: { items: true } });
     if (!order) throw ApiError.notFound('Order not found');
     if (order.paymentStatus !== 'PENDING' || order.status !== 'PENDING') throw ApiError.badRequest('This payment was already handled');
@@ -296,6 +319,8 @@ export async function verifyUpiPayment(vendorId, id, action) {
     }
     return tx.order.findUnique({ where: { id }, include });
   });
+  await notifyOrder(id, action === 'CONFIRM' ? 'UPI_CONFIRMED' : 'UPI_REJECTED');
+  return updated;
 }
 
 /** Background sweep: cancel UPI orders the customer never paid, and release their stock */
@@ -305,13 +330,15 @@ export async function releaseExpiredUpi() {
     include: { items: true },
   });
   for (const order of stale) {
-    await prisma.$transaction(async (tx) => {
+    const released = await prisma.$transaction(async (tx) => {
       const r = await tx.order.updateMany({
         where: { id: order.id, status: 'AWAITING_PAYMENT' },
         data: { status: 'CANCELLED', paymentStatus: 'FAILED', statusHistory: [{ status: 'CANCELLED', at: new Date().toISOString(), note: 'Not paid in time' }] },
       });
       if (r.count) await restoreStock(tx, order);
+      return r.count > 0;
     });
+    if (released) await notifyOrder(order.id, 'UPI_EXPIRED');
   }
   return stale.length;
 }
