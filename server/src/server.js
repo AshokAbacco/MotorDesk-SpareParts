@@ -26,7 +26,8 @@ async function start() {
     Promise.all([releaseExpired(), releaseExpiredUpi()])
       .then(([a, b]) => a + b && console.log(`🧹 Released ${a + b} unpaid online checkout(s)`))
       .catch((e) => console.error('Payment sweep failed:', e.message));
-    purgeOldNotifications().catch((e) => console.error('Notification cleanup failed:', e.message));
+    // async wrapper: any error (even a synchronous one) is logged, never crashes the server
+    (async () => purgeOldNotifications())().catch((e) => console.error('Notification cleanup failed:', e.message));
   }, 5 * 60 * 1000);
   sweeper.unref();
 
