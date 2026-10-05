@@ -90,12 +90,22 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelKey, opts.years, tickedYears.join(',')]);
 
-  /** Fit exactly From…To for this model. Years not in the list yet are added to the vehicle list first. */
-  const applyRange = async () => {
-    const from = Number(range.from), to = Number(range.to);
-    if (!from || !to) return toast.error('Choose a From and To year');
-    if (to < from) return toast.error('"To" year must be the same as or after "From" year');
-    if (to - from >= 40) return toast.error('Year range can be at most 40 years');
+  const rangeError = (from, to) => {
+    if (!from || !to) return 'Choose a From and To year';
+    if (to < from) return '"To" year must be the same as or after "From" year';
+    if (to - from >= 40) return 'Year range can be at most 40 years';
+    return null;
+  };
+  const rangeProblem = range.from && range.to ? rangeError(Number(range.from), Number(range.to)) : null;
+
+  /**
+   * Fit exactly From…To for this model (replaces the years ticked before). Years the model doesn't have yet
+   * are added to the vehicle list first. Returns the new fitment list, or null if it couldn't be applied.
+   */
+  const applyRange = async (fromValue, toValue) => {
+    const from = Number(fromValue), to = Number(toValue);
+    const problem = rangeError(from, to);
+    if (problem) { toast.error(problem); return null; }
     const known = opts.years.filter((v) => v.year >= from && v.year <= to);
     let inRange = known;
     if (known.length < to - from + 1) {
@@ -108,11 +118,20 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
         if (res.data.created) toast.success(`${res.data.created} new year${res.data.created > 1 ? 's' : ''} added for ${pick.brand} ${pick.model}`);
       } catch (err) {
         toast.error(err.message);
-        return;
+        return null;
       } finally { setApplyingRange(false); }
     }
     const sameModel = (v) => v.type === pick.type && v.brand === pick.brand && v.model === pick.model;
-    setVehicles((cur) => [...cur.filter((v) => !sameModel(v)), ...inRange]);
+    const next = [...vehicles.filter((v) => !sameModel(v)), ...inRange];
+    setVehicles(next);
+    return next;
+  };
+
+  // Changing From or To applies the range straight away (no extra button to forget)
+  const onRangeChange = (key) => (e) => {
+    const next = { ...range, [key]: e.target.value };
+    setRange(next);
+    if (next.from && next.to && !rangeError(Number(next.from), Number(next.to))) applyRange(next.from, next.to);
   };
   const toggle = (v) => setVehicles(selectedIds.has(v.id) ? vehicles.filter((x) => x.id !== v.id) : [...vehicles, v]);
   const addAllYears = () => setVehicles([...vehicles, ...opts.years.filter((v) => !selectedIds.has(v.id))]);
@@ -164,12 +183,19 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    // Brand + model chosen in the dropdowns but no year ticked → it still counts: fit all its years
+    if (applyingRange) return toast('Adding the years… press Save again in a moment', { icon: '⏳' });
+    // Brand + model chosen but no year ticked → it still counts: use the From / To years (or all its years)
     let fitted = vehicles;
     const picked = opts.years.filter((y) => y.brand === pick.brand && y.model === pick.model);
-    if (pick.model && picked.length && !picked.some((y) => selectedIds.has(y.id))) {
-      fitted = [...vehicles, ...picked];
-      setVehicles(fitted);
+    if (pick.model && !vehicles.some((v) => v.type === pick.type && v.brand === pick.brand && v.model === pick.model)) {
+      if (range.from && range.to) {
+        const applied = await applyRange(range.from, range.to);
+        if (!applied) return;
+        fitted = applied;
+      } else if (picked.length) {
+        fitted = [...vehicles, ...picked];
+        setVehicles(fitted);
+      }
     }
     // A shop's product must fit at least one vehicle, otherwise it can't show in its Car / Bike catalog
     if (isVendor && !fitted.length) return toast.error('Select at least one vehicle this part fits');
@@ -251,20 +277,21 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
             <div className="mt-3 flex flex-wrap items-end gap-2">
               <label className="flex flex-col text-xs text-slate-600">
                 From year
-                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} aria-label="Fitment from year">
+                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.from} onChange={onRangeChange('from')} disabled={applyingRange} aria-label="Fitment from year">
                   <option value="">—</option>
                   {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </label>
               <label className="flex flex-col text-xs text-slate-600">
                 To year
-                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} aria-label="Fitment to year">
+                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.to} onChange={onRangeChange('to')} disabled={applyingRange} aria-label="Fitment to year">
                   <option value="">—</option>
                   {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </label>
-              <Button type="button" size="sm" variant="secondary" loading={applyingRange} onClick={applyRange}>Apply years</Button>
-              <p className="w-full text-xs text-slate-400 sm:w-auto sm:pb-2">Fits {pick.brand} {pick.model} from {range.from || '…'} to {range.to || '…'} · new years are added to the list</p>
+              <p className={`w-full text-xs sm:w-auto sm:pb-2 ${rangeProblem ? 'text-red-600' : 'text-slate-400'}`}>
+                {applyingRange ? 'Adding years…' : rangeProblem || `Fits ${pick.brand} ${pick.model} from ${range.from || '…'} to ${range.to || '…'} · years not in the list are added automatically`}
+              </p>
             </div>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
