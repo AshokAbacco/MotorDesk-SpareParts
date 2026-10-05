@@ -1,6 +1,6 @@
 // client/src/dashboardPages/admin/components/ProductForm.jsx
 import { Bike, Car, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import useAuth from '../../../shared/hooks/useAuth.js';
 import Button from '../../../shared/ui/Button.jsx';
@@ -9,7 +9,7 @@ import Modal from '../../../shared/ui/Modal.jsx';
 import Select from '../../../shared/ui/Select.jsx';
 import { GST_RATES } from '../../../shared/utils/constants.js';
 import { allowedVehicles } from '../../../shared/utils/inventoryType.js';
-import { createProduct, getVehicleBrands, getVehicleModels, getVehicles, updateProduct } from '../products.api.js';
+import { addVehicleRange, createProduct, getVehicleBrands, getVehicleModels, getVehicles, updateProduct } from '../products.api.js';
 import ImageUploader from './ImageUploader.jsx';
 import VehicleQuickAdd from './VehicleQuickAdd.jsx';
 
@@ -17,6 +17,8 @@ const EMPTY = { name: '', category: '', subCategory: '', brand: '', oemNumber: '
 
 const VEHICLE_TABS = [['CAR', Car], ['BIKE', Bike]];
 const ADD_NEW = '__add_new__'; // special dropdown value → opens the "Add new brand / model" panel
+const THIS_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: THIS_YEAR + 1 - 1980 + 1 }, (_, i) => THIS_YEAR + 1 - i); // next year … 1980
 
 /**
  * Create / edit a catalog product, including vehicle fitment.
@@ -40,6 +42,9 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
   const [opts, setOpts] = useState({ brands: [], models: [], years: [] });
   const [adding, setAdding] = useState(null); // null | 'brand' | 'model' — the inline add-vehicle panel
   const [saving, setSaving] = useState(false);
+  const [range, setRange] = useState({ from: '', to: '' }); // From / To year pickers for the chosen model
+  const [applyingRange, setApplyingRange] = useState(false);
+  const autoAddYears = useRef(false); // true right after the user picks a model → all its years get ticked
 
   useEffect(() => {
     if (!open) return;
@@ -61,12 +66,54 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
   useEffect(() => { loadBrands(pick.type); }, [pick.type]);
   useEffect(() => { if (pick.brand) loadModels(pick.type, pick.brand); }, [pick.type, pick.brand]);
   useEffect(() => {
-    if (pick.model) getVehicles(pick).then((r) => setOpts((o) => ({ ...o, years: r.data }))).catch(() => {});
-    else setOpts((o) => ({ ...o, years: [] }));
+    if (pick.model) {
+      getVehicles(pick).then((r) => {
+        setOpts((o) => ({ ...o, years: r.data }));
+        // Picking a brand + model means "this part fits it" → tick all years (untick the ones it doesn't fit)
+        if (autoAddYears.current) {
+          autoAddYears.current = false;
+          setVehicles((cur) => (cur.some((v) => r.data.some((y) => y.id === v.id)) ? cur : [...cur, ...r.data]));
+        }
+      }).catch(() => {});
+    } else setOpts((o) => ({ ...o, years: [] }));
   }, [pick]);
 
   const set = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   const selectedIds = new Set(vehicles.map((v) => v.id));
+
+  // From / To show the ticked years of the chosen model (or all its known years)
+  const modelKey = `${pick.type}|${pick.brand}|${pick.model}`;
+  const tickedYears = vehicles.filter((v) => v.type === pick.type && v.brand === pick.brand && v.model === pick.model).map((v) => v.year);
+  useEffect(() => {
+    const ys = tickedYears.length ? tickedYears : opts.years.map((v) => v.year);
+    setRange(ys.length ? { from: Math.min(...ys), to: Math.max(...ys) } : { from: '', to: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelKey, opts.years, tickedYears.join(',')]);
+
+  /** Fit exactly From…To for this model. Years not in the list yet are added to the vehicle list first. */
+  const applyRange = async () => {
+    const from = Number(range.from), to = Number(range.to);
+    if (!from || !to) return toast.error('Choose a From and To year');
+    if (to < from) return toast.error('"To" year must be the same as or after "From" year');
+    if (to - from >= 40) return toast.error('Year range can be at most 40 years');
+    const known = opts.years.filter((v) => v.year >= from && v.year <= to);
+    let inRange = known;
+    if (known.length < to - from + 1) {
+      setApplyingRange(true);
+      try {
+        const res = await addVehicleRange({ type: pick.type, brand: pick.brand, model: pick.model, yearFrom: from, yearTo: to });
+        inRange = res.data.vehicles;
+        const all = await getVehicles(pick);
+        setOpts((o) => ({ ...o, years: all.data }));
+        if (res.data.created) toast.success(`${res.data.created} new year${res.data.created > 1 ? 's' : ''} added for ${pick.brand} ${pick.model}`);
+      } catch (err) {
+        toast.error(err.message);
+        return;
+      } finally { setApplyingRange(false); }
+    }
+    const sameModel = (v) => v.type === pick.type && v.brand === pick.brand && v.model === pick.model;
+    setVehicles((cur) => [...cur.filter((v) => !sameModel(v)), ...inRange]);
+  };
   const toggle = (v) => setVehicles(selectedIds.has(v.id) ? vehicles.filter((x) => x.id !== v.id) : [...vehicles, v]);
   const addAllYears = () => setVehicles([...vehicles, ...opts.years.filter((v) => !selectedIds.has(v.id))]);
 
@@ -92,6 +139,7 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
   const onModelChange = (e) => {
     if (e.target.value === ADD_NEW) return setAdding('model');
     setAdding(null);
+    autoAddYears.current = Boolean(e.target.value);
     setPick({ ...pick, model: e.target.value });
   };
 
@@ -116,10 +164,18 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    // Brand + model chosen in the dropdowns but no year ticked → it still counts: fit all its years
+    let fitted = vehicles;
+    const picked = opts.years.filter((y) => y.brand === pick.brand && y.model === pick.model);
+    if (pick.model && picked.length && !picked.some((y) => selectedIds.has(y.id))) {
+      fitted = [...vehicles, ...picked];
+      setVehicles(fitted);
+    }
     // A shop's product must fit at least one vehicle, otherwise it can't show in its Car / Bike catalog
-    if (isVendor && !vehicles.length) return toast.error('Select at least one vehicle this part fits');
+    if (isVendor && !fitted.length) return toast.error('Select at least one vehicle this part fits');
+    if (!fitted.length && !window.confirm('No vehicle fitment selected.\n\nThis part will have no Car / Bike type and won’t appear in vehicle searches. Save anyway?')) return;
     setSaving(true);
-    const body = { ...Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '')), gstRate: Number(form.gstRate), vehicleIds: vehicles.map((v) => v.id) };
+    const body = { ...Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '')), gstRate: Number(form.gstRate), vehicleIds: fitted.map((v) => v.id) };
     try {
       const res = product ? await updateProduct(product.id, body) : await createProduct(body);
       toast.success(product ? 'Product updated' : 'Product created');
@@ -190,10 +246,31 @@ export default function ProductForm({ product, open, onClose, onSaved, defaultTy
               <button type="button" onClick={addAllYears} className="flex items-center gap-1 px-2 text-xs font-medium text-brand-600"><Plus className="h-3 w-3" /> All years</button>
             </div>
           )}
+          {pick.model && !adding && (
+            // Year range: pick From / To — years missing for this model are added automatically
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <label className="flex flex-col text-xs text-slate-600">
+                From year
+                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} aria-label="Fitment from year">
+                  <option value="">—</option>
+                  {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col text-xs text-slate-600">
+                To year
+                <select className="field mt-1 w-28 py-1.5 text-sm" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} aria-label="Fitment to year">
+                  <option value="">—</option>
+                  {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <Button type="button" size="sm" variant="secondary" loading={applyingRange} onClick={applyRange}>Apply years</Button>
+              <p className="w-full text-xs text-slate-400 sm:w-auto sm:pb-2">Fits {pick.brand} {pick.model} from {range.from || '…'} to {range.to || '…'} · new years are added to the list</p>
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             {groups.length === 0 && (
               <p className={`text-xs ${isVendor ? 'text-amber-600' : 'text-slate-400'}`}>
-                {isVendor ? 'Pick a brand, model and years this part fits.' : 'No vehicles mapped — this part won’t appear in vehicle searches.'}
+                {isVendor ? 'Pick a brand and model this part fits — all its years are added; untick any that don’t fit.' : 'No vehicles mapped yet — pick a brand and model (all its years are added), or this part won’t have a Car / Bike type or appear in vehicle searches.'}
               </p>
             )}
             {groups.map((g) => {
