@@ -2,7 +2,7 @@
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
 import { buildMeta, getPagination } from '../utils/pagination.js';
-import { crmGarageKey, getCrmGarages, isCrmGarageId, peekCrmGarages } from './garageCrm.js';
+import { crmGarageKey, getVisibleCrmGarages, hiddenCrmIds, isCrmGarageId, peekCrmGarages } from './garageCrm.js';
 
 const matches = (g, q) => {
   if (!q) return true;
@@ -28,10 +28,13 @@ export async function list(vendorId, query) {
     { email: { contains: query.q, mode: 'insensitive' } },
   ];
 
-  // The "Own" tab never waits for the CRM; the other tabs fetch it (cached for a few minutes)
+  // The "Own" tab never waits for the CRM; the other tabs fetch it (cached for a few minutes).
+  // Garages the admin hid (Admin → MotorDesk Garages) are never shown to shops.
   const [ownRows, crm] = await Promise.all([
     prisma.garage.findMany({ where: ownWhere, orderBy: { name: 'asc' } }),
-    source === 'OWN' ? { garages: peekCrmGarages(), status: null } : getCrmGarages(),
+    source === 'OWN'
+      ? hiddenCrmIds().then((hidden) => ({ garages: peekCrmGarages()?.filter((g) => !hidden.has(g.crmId)) ?? null, status: null }))
+      : getVisibleCrmGarages(),
   ]);
   const own = ownRows.map((g) => ({ ...g, source: 'OWN' }));
   const motordesk = (crm.garages ?? []).filter((g) => matches(g, query.q));

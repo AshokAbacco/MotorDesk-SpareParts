@@ -9,6 +9,7 @@
  * and the CRM isn't asked on every click.
  */
 import { env, isGarageCrmConfigured } from '../config/env.js';
+import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const PAGE_SIZE = 100;          // the CRM caps a page at 100
@@ -129,9 +130,26 @@ export const isCrmGarageId = (id) => typeof id === 'string' && id.startsWith(ID_
 export const crmIdOf = (id) => Number(id.slice(ID_PREFIX.length));
 export const crmGarageKey = (crmId) => `${ID_PREFIX}${crmId}`;
 
+// ─────────────── Admin "show / hide" (Admin → MotorDesk Garages) ───────────────
+
+/** Set of CRM garage ids the admin has hidden from shops */
+export async function hiddenCrmIds() {
+  const rows = await prisma.hiddenCrmGarage.findMany({ select: { crmGarageId: true } });
+  return new Set(rows.map((r) => r.crmGarageId));
+}
+
+/** What shops see: CRM garages minus the hidden ones */
+export async function getVisibleCrmGarages(opts) {
+  const [{ garages, status }, hidden] = await Promise.all([getCrmGarages(opts), hiddenCrmIds()]);
+  return { garages: garages.filter((g) => !hidden.has(g.crmId)), status };
+}
+
 /** One MotorDesk garage by its app id ("md-12") — used when billing it at POS */
 export async function getCrmGarage(id) {
   const crmId = crmIdOf(id);
+  if (await prisma.hiddenCrmGarage.findUnique({ where: { crmGarageId: crmId } })) {
+    throw ApiError.notFound('This MotorDesk garage is not available — the admin has hidden it');
+  }
   let { garages } = await getCrmGarages();
   let garage = garages.find((g) => g.crmId === crmId);
   if (!garage) ({ garages } = await getCrmGarages({ force: true })); // maybe registered in the last few minutes

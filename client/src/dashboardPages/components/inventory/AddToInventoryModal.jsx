@@ -1,3 +1,4 @@
+// client/src/dashboardPages/components/inventory/AddToInventoryModal.jsx
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import Button from '../../../shared/ui/Button.jsx';
@@ -23,7 +24,7 @@ export default function AddToInventoryModal({ product, onClose, onAdded, addFn }
         productId: product.id, costPrice: Number(form.costPrice) || 0, price: Number(form.price), mrp: Number(form.mrp),
         stock: Number(form.stock) || 0, lowStockThreshold: Number(form.lowStockThreshold) || 0,
       });
-      toast.success(`${product.name} added to inventory`);
+      toast.success(`${product.name} added — find it under “My products”`);
       onAdded?.(product.id);
       onClose();
     } catch (err) {

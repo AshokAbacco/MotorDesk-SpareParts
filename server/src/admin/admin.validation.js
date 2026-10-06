@@ -42,3 +42,16 @@ export const updateCustomerSchema = createCustomerSchema.extend({
 });
 
 export const customerStatusSchema = z.object({ isActive: z.boolean() });
+
+// Admin → MotorDesk Garages (Garage CRM access)
+export const listGarageAccessQuery = z.object({
+  q: z.string().trim().optional(),
+  status: z.enum(['ALL', 'VISIBLE', 'HIDDEN']).default('ALL'),
+  refresh: z.enum(['true', 'false']).transform((v) => v === 'true').optional(), // ask the CRM again now
+  page: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().optional(),
+});
+export const garageAccessSchema = z.object({
+  crmIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
+  visible: z.boolean(),
+});

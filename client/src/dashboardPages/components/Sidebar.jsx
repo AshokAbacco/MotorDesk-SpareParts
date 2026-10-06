@@ -37,6 +37,7 @@ export const ADMIN_NAV = [
   { to: '/admin/products', label: 'Products', icon: Package },
   // { to: '/admin/plans', label: 'Plans', icon: CreditCard },
   { to: '/shop', label: 'View marketplace', icon: Users },
+  { to: '/admin/motordesk-garages', label: 'MotorDesk Garages', icon: Wrench },
 ];
 
 export default function Sidebar({ nav }) {

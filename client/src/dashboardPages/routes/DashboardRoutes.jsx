@@ -10,6 +10,7 @@ import BikeInventoryPage from '../bikePages/BikeInventoryPage.jsx';
 import CarCatalogPage from '../carPages/CarCatalogPage.jsx';
 import CarInventoryPage from '../carPages/CarInventoryPage.jsx';
 import CustomersPage from '../customers/CustomersPage.jsx';
+import GarageAccessPage from '../garageAccess/GarageAccessPage.jsx';
 import GaragesPage from '../garages/GaragesPage.jsx';
 import DashboardPage from '../home/DashboardPage.jsx';
 import AdminLayout from '../layouts/AdminLayout.jsx';
@@ -33,6 +34,7 @@ export default function DashboardRoutes({ area }) {
               <Route index element={<AdminDashboardPage />} />
               <Route path="vendors" element={<VendorsPage />} />
               <Route path="customers" element={<CustomersPage />} />
+              <Route path="motordesk-garages" element={<GarageAccessPage />} />
               <Route path="products" element={<ProductsPage />} />
               <Route path="plans" element={<PlansPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />

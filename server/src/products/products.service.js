@@ -57,11 +57,14 @@ function visibilityWhere(viewer, { owner, includeInactive }) {
     return where;
   }
   if (viewer.role === 'VENDOR') {
-    // "My products" also shows the ones the shop has hidden, so they can be restored
-    if (owner === 'MINE') return { vendorId: viewer.vendorId };
-    const mine = { vendorId: viewer.vendorId, isActive: true };
-    if (owner === 'MASTER') return { vendorId: null, isActive: true };
-    return { OR: [{ vendorId: null, isActive: true }, mine] };
+    const stockedByMe = { inventory: { some: { vendorId: viewer.vendorId } } };
+    // "My products" = parts this shop has added & priced, plus the parts it created
+    // (also the ones it hid, so they can be restored)
+    if (owner === 'MINE') return { OR: [{ vendorId: viewer.vendorId }, stockedByMe] };
+    // Browsing ("All parts" / "Master catalog") only offers parts this shop hasn't added yet
+    const notStocked = { inventory: { none: { vendorId: viewer.vendorId } } };
+    if (owner === 'MASTER') return { vendorId: null, isActive: true, ...notStocked };
+    return { ...notStocked, OR: [{ vendorId: null, isActive: true }, { vendorId: viewer.vendorId, isActive: true }] };
   }
   return { vendorId: null, isActive: true };
 }
@@ -69,10 +72,17 @@ function visibilityWhere(viewer, { owner, includeInactive }) {
 export async function list(query, viewer) {
   const pg = getPagination(query);
   const where = { AND: [buildProductWhere({ ...query, includeInactive: true }), visibilityWhere(viewer, query)] };
-  const [items, total] = await prisma.$transaction([
-    prisma.product.findMany({ where, include: withVehicles, orderBy: { createdAt: 'desc' }, skip: pg.skip, take: pg.take }),
+  // A shop also gets its own price & stock for each part (null = not added yet)
+  const include = viewer.role === 'VENDOR'
+    ? { ...withVehicles, inventory: { where: { vendorId: viewer.vendorId }, select: { id: true, price: true, mrp: true, stock: true, isListed: true } } }
+    : withVehicles;
+  const [rows, total] = await prisma.$transaction([
+    prisma.product.findMany({ where, include, orderBy: { createdAt: 'desc' }, skip: pg.skip, take: pg.take }),
     prisma.product.count({ where }),
   ]);
+  const items = viewer.role === 'VENDOR'
+    ? rows.map(({ inventory, ...p }) => ({ ...p, myInventory: inventory[0] ?? null }))
+    : rows;
   return { items, meta: buildMeta(total, pg) };
 }
 

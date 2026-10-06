@@ -1,6 +1,7 @@
 // server/src/admin/admin.controller.js
 import { sendCreated, sendSuccess } from '../utils/ApiResponse.js';
 import * as adminService from './admin.service.js';
+import * as garageAccess from '../garages/garageAccess.js';
 
 export const analytics = async (_req, res) => sendSuccess(res, await adminService.analytics());
 export const listVendors = async (req, res) => {
@@ -26,3 +27,14 @@ export const deleteCustomer = async (req, res) => {
 };
 export const setCustomerStatus = async (req, res) =>
   sendSuccess(res, await adminService.setCustomerStatus(req.params.id, req.body.isActive), req.body.isActive ? 'Customer enabled' : 'Customer disabled');
+
+// MotorDesk Garages (which Garage CRM garages shops can see)
+export const listGarageAccess = async (req, res) => {
+  const { items, meta } = await garageAccess.list(req.validQuery);
+  sendSuccess(res, items, 'OK', 200, meta);
+};
+export const setGarageAccess = async (req, res) => {
+  const r = await garageAccess.setVisibility(req.body.crmIds, req.body.visible, req.user.id);
+  const n = req.body.crmIds.length;
+  sendSuccess(res, r, `${n === 1 ? 'Garage' : `${n} garages`} ${req.body.visible ? 'shown to' : 'hidden from'} shops`);
+};

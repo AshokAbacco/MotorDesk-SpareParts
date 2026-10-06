@@ -1,6 +1,7 @@
+// client/src/dashboardPages/components/inventory/InventoryWorkspace.jsx
 import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import useDebounce from '../../../shared/hooks/useDebounce.js';
 import useFetch from '../../../shared/hooks/useFetch.js';
 import Pagination from '../../../shared/ui/Pagination.jsx';
@@ -13,7 +14,9 @@ import EditInventoryModal from './EditInventoryModal.jsx';
  * api = { list, update, adjust, remove, brands, categories }
  */
 export default function InventoryWorkspace({ title, subtitle, catalogPath, api, Filters, Table, Grid }) {
-  const [filters, setFilters] = useState({ q: '', vehicleBrand: '', category: '', stockStatus: '', page: 1 });
+  // ?q=OEM (from the catalog's "Manage" link) pre-fills the search
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState({ q: searchParams.get('q') ?? '', vehicleBrand: '', category: '', stockStatus: '', page: 1 });
   const [editing, setEditing] = useState(null);
   const [options, setOptions] = useState({ brands: [], categories: [] });
   const viewMode = useUiStore((s) => s.viewMode);
