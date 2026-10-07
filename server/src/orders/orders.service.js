@@ -2,6 +2,7 @@
 import { ORDER_TRANSITIONS } from '../constants/orderStatus.js';
 import { prisma } from '../config/prisma.js';
 import { createFromOrder } from '../invoices/invoices.service.js';
+import { attachCrmMatch } from '../garages/crmCustomerMatch.js';
 import { notifyOrder, notifyOrders } from '../notifications/notifications.service.js';
 import { createPayment, ensureRazorpay, refundOrder } from '../payments/payments.service.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -34,7 +35,7 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
   if (online) ensureRazorpay();
   const customerId = user.id;
 
-  const orders = await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const rows = await tx.inventory.findMany({
       where: { id: { in: items.map((i) => i.inventoryId) }, isListed: true, product: { isActive: true }, vendor: { status: 'APPROVED' } },
       include: { product: true, vendor: true },
@@ -86,12 +87,16 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
             })),
           },
         },
-        include,
+        include: { items: true }, // full details are loaded after the transaction (keeps it short)
       });
       orders.push(order);
     }
     return orders;
   });
+
+  // Shop / customer / invoice details for the response — read outside the transaction
+  const full = await prisma.order.findMany({ where: { id: { in: created.map((o) => o.id) } }, include });
+  const orders = created.map((o) => full.find((f) => f.id === o.id) ?? o);
 
   // ONLINE checkouts are announced once Razorpay confirms the payment (payments.service → markPaid)
   if (!online) {
@@ -151,7 +156,11 @@ async function listWhere(where, query, { showAwaiting = false, forCustomer = fal
 }
 
 export const listForCustomer = (customerId, query) => listWhere({ customerId }, query, { showAwaiting: true, forCustomer: true });
-export const listForVendor = (vendorId, query) => listWhere({ vendorId }, query);
+// Shops also see whether the customer is a MotorDesk Garage CRM garage (matched by phone & email)
+export async function listForVendor(vendorId, query) {
+  const { items, meta } = await listWhere({ vendorId }, query);
+  return { items: await attachCrmMatch(items), meta };
+}
 
 export async function getById(id, { customerId, vendorId }) {
   const order = await prisma.order.findFirst({
@@ -159,7 +168,7 @@ export async function getById(id, { customerId, vendorId }) {
     include,
   });
   if (!order) throw ApiError.notFound('Order not found');
-  return order;
+  return vendorId ? attachCrmMatch(order) : order;
 }
 
 async function restoreStock(tx, order) {

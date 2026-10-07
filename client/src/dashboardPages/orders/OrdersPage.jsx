@@ -25,7 +25,8 @@ export default function OrdersPage() {
   const params = { page, ...(status && { status }), ...(query && { q: query }) };
   const { data, meta, loading, reload } = useFetch(() => getVendorOrders(params), [JSON.stringify(params)]);
 
-  const onUpdated = (order) => { setOpen(order); reload(); };
+  // Status / payment updates return the order without the CRM match — keep the one we already have
+  const onUpdated = (order) => { setOpen((prev) => ({ ...order, crmMatch: order.crmMatch ?? prev?.crmMatch, crmChecked: order.crmChecked ?? prev?.crmChecked })); reload(); };
 
   // Opened from a notification (/vendor/orders?order=<id>) → show that order's details
   const [searchParams, setSearchParams] = useSearchParams();

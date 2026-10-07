@@ -1,9 +1,10 @@
 // client/src/dashboardPages/orders/components/OrderDetailsDrawer.jsx
-import { MapPin, Phone, X } from 'lucide-react';
+import { Mail, MapPin, Phone, ReceiptText, User, X } from 'lucide-react';
 import { formatCurrency } from '../../../shared/utils/formatCurrency.js';
 import { formatDateTime } from '../../../shared/utils/formatDate.js';
 import OrderTracker from '../../../landingPages/myOrders/components/OrderTracker.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
+import { CrmCustomerTag, matchedByText } from './OrdersTable.jsx';
 import StatusUpdater from './StatusUpdater.jsx';
 
 export default function OrderDetailsDrawer({ order, onClose, onUpdated }) {
@@ -23,6 +24,29 @@ export default function OrderDetailsDrawer({ order, onClose, onUpdated }) {
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-5 text-sm">
               <OrderTracker status={order.status} />
+
+              {/* Is the customer a garage on the MotorDesk Garage CRM? (matched by phone & email) */}
+              {order.crmMatch ? (
+                <div className="rounded-xl border border-amberline/50 bg-amberline-soft/60 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CrmCustomerTag match={order.crmMatch} />
+                    <span className="text-[11px] text-amberline-ink">Matched by {matchedByText(order.crmMatch)}</span>
+                  </div>
+                  <p className="mt-2 font-semibold text-slate-900">{order.crmMatch.name}</p>
+                  <div className="mt-1 space-y-0.5 text-xs text-slate-600">
+                    {order.crmMatch.ownerName && <p className="flex items-center gap-1"><User className="h-3 w-3" /> {order.crmMatch.ownerName}</p>}
+                    {order.crmMatch.phone && <p className="flex items-center gap-1"><Phone className="h-3 w-3" /> {order.crmMatch.phone}</p>}
+                    {order.crmMatch.email && <p className="flex items-center gap-1"><Mail className="h-3 w-3" /> {order.crmMatch.email}</p>}
+                    {order.crmMatch.gstin && <p className="flex items-center gap-1"><ReceiptText className="h-3 w-3" /> GSTIN <span className="font-mono">{order.crmMatch.gstin}</span></p>}
+                    {order.crmMatch.address && <p className="flex items-start gap-1"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {order.crmMatch.address}</p>}
+                  </div>
+                </div>
+              ) : order.crmChecked && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  Online customer — not registered on the MotorDesk Garage CRM{order.customer?.email ? ` (checked ${order.customer.email}${order.customer.phone ? ` / ${order.customer.phone}` : ''})` : ''}.
+                </p>
+              )}
+
               <div>
                 <p className="mb-1 font-semibold text-slate-700">Ship to</p>
                 <p>{order.shippingAddress.name}</p>
