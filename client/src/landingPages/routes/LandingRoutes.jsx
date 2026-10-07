@@ -10,6 +10,7 @@ import AuthLayout from '../layouts/AuthLayout.jsx';
 import ShopLayout from '../layouts/ShopLayout.jsx';
 import MyOrdersPage from '../myOrders/MyOrdersPage.jsx';
 import UpiPayPage from '../upiPay/UpiPayPage.jsx';
+import PricingPage from '../pricing/PricingPage.jsx';
 import ProductDetailPage from '../shop/ProductDetailPage.jsx';
 import ProductListPage from '../shop/ProductListPage.jsx';
 import useAuth from '../../shared/hooks/useAuth.js';
@@ -42,6 +43,7 @@ export default function LandingRoutes() {
         <Route path="my-orders" element={<MyOrdersPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="pay" element={<UpiPayPage />} />
+        <Route path="pricing" element={<PricingPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -8,6 +8,7 @@ import inventoryRoutes from '../inventory/inventory.routes.js';
 import invoicesRoutes from '../invoices/invoices.routes.js';
 import marketplaceRoutes from '../marketplace/marketplace.routes.js';
 import notificationsRoutes from '../notifications/notifications.routes.js';
+import onboardingRoutes from '../onboarding/onboarding.routes.js';
 import ordersRoutes from '../orders/orders.routes.js';
 import paymentsRoutes from '../payments/payments.routes.js';
 import posRoutes from '../pos/pos.routes.js';
@@ -39,6 +40,7 @@ router.use('/garages', garagesRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
+router.use('/onboarding', onboardingRoutes);
 router.use('/admin', adminRoutes);
 router.use('/uploads', uploadsRoutes);
 

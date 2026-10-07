@@ -161,7 +161,7 @@ export default function HomePage() {
               <h2 className="font-display text-4xl font-bold leading-none sm:text-5xl">Own a spare parts shop?</h2>
               <p className="mt-4 max-w-md text-brand-100/90">Run your counter, stock and accounts on MotorDesk — and get orders from customers in your city.</p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Link to="/register" className="inline-flex items-center gap-2 rounded-xl bg-amberline px-5 py-3 font-semibold text-gray-200 transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40">
+                <Link to="/pricing" className="inline-flex items-center gap-2 rounded-xl bg-amberline px-5 py-3 font-semibold text-slate-900 transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40">
                   <Store className="h-5 w-5" /> Register your shop
                 </Link>
                 <Link to="/login" className="inline-flex items-center rounded-xl px-5 py-3 font-medium text-white ring-1 ring-white/30 transition hover:bg-white/10">
@@ -177,7 +177,7 @@ export default function HomePage() {
                 </li>
               ))}
               <li className="flex items-center gap-2 text-sm text-white/70 sm:col-span-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-amberline" /> Start on the free plan. Works for car parts, bike parts or both.
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-amberline" /> Plans from ₹350 / month. Works for car parts, bike parts or both.
               </li>
             </ul>
           </div>

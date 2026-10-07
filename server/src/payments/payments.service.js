@@ -187,7 +187,15 @@ export async function handleWebhook(rawBody, signature) {
   const entity = event.payload?.payment?.entity;
 
   if ((event.event === 'payment.captured' || event.event === 'order.paid') && entity?.order_id) {
-    try { await markPaid(entity.order_id, entity.id); } catch (err) { if (err.statusCode !== 409 && err.statusCode !== 404) throw err; }
+    try {
+      await markPaid(entity.order_id, entity.id);
+    } catch (err) {
+      if (err.statusCode === 404) {
+        // Not an order / subscription payment — may be a shop sign-up paid on /pricing (browser closed before verify)
+        const { recordPaidSignup } = await import('../onboarding/onboarding.service.js');
+        await recordPaidSignup(entity.order_id, entity.id);
+      } else if (err.statusCode !== 409) throw err;
+    }
   } else if (event.event === 'payment.failed' && entity?.order_id) {
     // The customer may retry inside the same Checkout window, so just record the reason
     await prisma.payment.updateMany({

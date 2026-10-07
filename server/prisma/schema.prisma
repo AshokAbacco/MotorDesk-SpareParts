@@ -346,18 +346,48 @@ model Expense {
 
 // ─────────────────────────── SAAS PLANS ───────────────────────────
 
+enum PlanArea {
+  URBAN
+  RURAL
+}
+
 model Plan {
-  id           String   @id @default(uuid())
-  name         String   @unique
-  price        Decimal  @db.Decimal(10, 2)
+  id           String    @id @default(uuid())
+  name         String    @unique
+  price        Decimal   @db.Decimal(10, 2)
   durationDays Int
   maxSkus      Int
   features     String[]
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  area         PlanArea? // set = sign-up plan shown on the /pricing page (Urban / Rural shops)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  subscriptions Subscription[]
+  subscriptions  Subscription[]
+  signupPayments VendorSignupPayment[]
+}
+
+// A shop owner paid for a plan on /pricing BEFORE creating an account.
+// Saved only after Razorpay confirms the payment; used once to register the shop (prefills the form).
+model VendorSignupPayment {
+  id                String    @id @default(uuid())
+  planId            String
+  shopName          String
+  ownerName         String
+  email             String
+  phone             String
+  address           String
+  gstin             String?
+  amount            Int // paise
+  razorpayOrderId   String    @unique
+  razorpayPaymentId String    @unique
+  paidAt            DateTime  @default(now())
+  usedAt            DateTime? // set when the shop account is created
+  vendorId          String?   @unique
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([email])
 }
 
 model Subscription {

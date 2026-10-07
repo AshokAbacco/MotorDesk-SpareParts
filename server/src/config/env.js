@@ -27,8 +27,11 @@ const schema = z.object({
   CF_SECRET_ACCESS_KEY: cleanKey,
   CF_BUCKET_NAME: cleanKey,
 
-  RAZORPAY_KEY_ID: z.string().optional().default(''),
-  RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+  // Razorpay keys: RAZORPAY_KEY / RAZORPAY_SECRET (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET also work)
+  RAZORPAY_KEY: cleanKey,
+  RAZORPAY_SECRET: cleanKey,
+  RAZORPAY_KEY_ID: cleanKey,
+  RAZORPAY_KEY_SECRET: cleanKey,
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
   PAYMENT_HOLD_MINUTES: z.coerce.number().int().min(5).default(30), // stock reserved while customer pays
 
@@ -46,6 +49,8 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+env.RAZORPAY_KEY_ID = env.RAZORPAY_KEY || env.RAZORPAY_KEY_ID;
+env.RAZORPAY_KEY_SECRET = env.RAZORPAY_SECRET || env.RAZORPAY_KEY_SECRET;
 export const isProd = env.NODE_ENV === 'production';
 
 /*
