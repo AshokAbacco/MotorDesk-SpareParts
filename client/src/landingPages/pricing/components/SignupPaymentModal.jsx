@@ -42,7 +42,7 @@ export default function SignupPaymentModal({ plan, onClose }) {
       }
       setStep('verifying');
       const paid = await verifySignupPayment(result.response);
-      toast.success('Payment successful! Now create your shop account.');
+      toast.success(`Payment successful! Your invoice is being emailed to ${form.email}. Now create your shop account.`, { duration: 6000 });
       onClose();
       navigate(`/register?signup=${paid.data.signupId}`);
     } catch (err) {

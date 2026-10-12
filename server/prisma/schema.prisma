@@ -385,9 +385,25 @@ model VendorSignupPayment {
   usedAt            DateTime? // set when the shop account is created
   vendorId          String?   @unique
 
+  // Payment invoice (PDF emailed to `email` once Razorpay shows the payment as captured)
+  invoiceNumber    String?            @unique // e.g. MDS/2026-27/000001
+  invoiceStatus    InvoiceEmailStatus @default(PENDING)
+  invoiceAttempts  Int                @default(0)
+  invoiceNextTryAt DateTime? // when the background job may try again (null = don't)
+  invoiceLastError String?
+  invoiceSentAt    DateTime?
+
   plan Plan @relation(fields: [planId], references: [id])
 
   @@index([email])
+  @@index([invoiceStatus, invoiceNextTryAt])
+}
+
+enum InvoiceEmailStatus {
+  PENDING // waiting to be sent (or waiting for Razorpay to capture the payment)
+  SENDING // being sent right now (claimed — stops duplicate emails)
+  SENT
+  FAILED // last try failed; retried automatically until the attempts run out
 }
 
 model Subscription {

@@ -15,6 +15,7 @@ import { prisma } from '../config/prisma.js';
 import { RAZORPAY_KEY_ID, razorpay } from '../config/razorpay.js';
 import { ensureRazorpay, isValidCheckoutSignature, toPaise } from '../payments/payments.service.js';
 import { ApiError } from '../utils/ApiError.js';
+import { queueSignupInvoice } from './signupInvoice.js';
 
 const PURPOSE = 'VENDOR_SIGNUP';
 
@@ -79,6 +80,7 @@ const prefillOf = (s) => ({
   plan: s.plan && { id: s.plan.id, name: s.plan.name, price: s.plan.price, durationDays: s.plan.durationDays, area: s.plan.area },
   shopName: s.shopName, ownerName: s.ownerName, email: s.email, phone: s.phone, address: s.address, gstin: s.gstin ?? '',
   amount: s.amount / 100, // rupees actually paid
+  invoiceNumber: s.invoiceNumber,
   paidAt: s.paidAt,
 });
 
@@ -88,7 +90,10 @@ const prefillOf = (s) => ({
  */
 export async function recordPaidSignup(razorpayOrderId, razorpayPaymentId) {
   const existing = await prisma.vendorSignupPayment.findUnique({ where: { razorpayOrderId }, include: { plan: true } });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.invoiceStatus !== 'SENT') queueSignupInvoice(existing.id); // no-op if already being sent
+    return existing;
+  }
 
   const order = await razorpay.orders.fetch(razorpayOrderId);
   const n = order?.notes ?? {};
@@ -98,8 +103,9 @@ export async function recordPaidSignup(razorpayOrderId, razorpayPaymentId) {
   if (!plan) throw ApiError.notFound('Plan not found');
 
   try {
-    return await prisma.vendorSignupPayment.create({
+    const saved = await prisma.vendorSignupPayment.create({
       data: {
+        invoiceNextTryAt: new Date(), // invoice number is given when the invoice is actually issued
         planId: plan.id,
         shopName: n.shopName, ownerName: n.ownerName, email: n.email, phone: n.phone, address: n.address, gstin: n.gstin || null,
         amount: Number(order.amount), // what was actually charged (Razorpay is the source of truth)
@@ -107,6 +113,9 @@ export async function recordPaidSignup(razorpayOrderId, razorpayPaymentId) {
       },
       include: { plan: true },
     });
+    // Payment invoice email (checks with Razorpay that the payment is captured before sending)
+    queueSignupInvoice(saved.id);
+    return saved;
   } catch (err) {
     if (err.code === 'P2002') return prisma.vendorSignupPayment.findUnique({ where: { razorpayOrderId }, include: { plan: true } });
     throw err;

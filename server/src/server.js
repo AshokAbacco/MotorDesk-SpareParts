@@ -1,8 +1,9 @@
 // server/src/server.js
 import app from './app.js';
-import { env, isR2Configured, isRazorpayConfigured, r2KeyProblems } from './config/env.js';
+import { env, isMailConfigured, isR2Configured, isRazorpayConfigured, r2KeyProblems } from './config/env.js';
 import { prisma } from './config/prisma.js';
 import { purgeOld as purgeOldNotifications } from './notifications/notifications.service.js';
+import { retryDueSignupInvoices } from './onboarding/signupInvoice.js';
 import { releaseExpiredUpi } from './orders/orders.service.js';
 import { releaseExpired } from './payments/payments.service.js';
 
@@ -20,6 +21,7 @@ async function start() {
     for (const p of r2KeyProblems) console.warn(`     • ${p}`);
   } else if (!isR2Configured) console.warn('⚠️  Cloudflare R2 not configured — image/PDF uploads will return 503');
   if (!isRazorpayConfigured) console.warn('⚠️  Razorpay not configured — only Cash on Delivery is offered at checkout');
+  if (!isMailConfigured) console.warn('⚠️  Microsoft 365 email not configured (MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET / MS_SMTP_USER) — payment invoices won’t be emailed');
 
   // Every 5 min: release stock held by online orders that were never paid
   const sweeper = setInterval(() => {
@@ -28,6 +30,8 @@ async function start() {
       .catch((e) => console.error('Payment sweep failed:', e.message));
     // async wrapper: any error (even a synchronous one) is logged, never crashes the server
     (async () => purgeOldNotifications())().catch((e) => console.error('Notification cleanup failed:', e.message));
+    // Plan invoice emails that failed or are waiting for Razorpay to capture the payment
+    retryDueSignupInvoices().catch((e) => console.error('Invoice email retry failed:', e.message));
   }, 5 * 60 * 1000);
   sweeper.unref();
 

@@ -129,7 +129,7 @@ export default function RegisterForm() {
       {isVendor && paid && (
         <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
           <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" />
-          <p><b>{paid.plan?.name}</b> paid ({formatCurrency(paid.amount ?? paid.plan?.price)}). Your shop details are filled in — add a password and what you sell to finish.</p>
+          <p><b>{paid.plan?.name}</b> paid ({formatCurrency(paid.amount ?? paid.plan?.price)}). Your shop details are filled in — add a password and what you sell to finish. The payment invoice is emailed to <b>{paid.email}</b>.</p>
         </div>
       )}
 

@@ -39,6 +39,22 @@ const schema = z.object({
   GARAGE_CRM_API_URL: cleanKey,   // e.g. https://auto-garage-crm-zrxc.onrender.com
   GARAGE_CRM_API_KEY: cleanKey,   // = EXTERNAL_API_KEY in the Garage CRM server's .env
   GARAGE_CRM_CACHE_MINUTES: z.coerce.number().min(1).default(5),
+
+  // Microsoft 365 email (Azure app with Microsoft Graph "Mail.Send" application permission)
+  MS_TENANT_ID: cleanKey,
+  MS_CLIENT_ID: cleanKey,
+  MS_CLIENT_SECRET: cleanKey,
+  MS_SMTP_USER: cleanKey, // mailbox the emails are sent from, e.g. support@themotordesk.com
+  MS_LOGIN_URL: z.string().default('https://login.microsoftonline.com'),
+  MS_GRAPH_URL: z.string().default('https://graph.microsoft.com'),
+
+  // Seller details printed on plan invoices (MotorDesk's own company)
+  COMPANY_NAME: z.string().default('MotorDesk'),
+  COMPANY_ADDRESS: z.string().default(''),
+  COMPANY_GSTIN: cleanKey, // set it → invoices show GST (plan prices are GST-inclusive)
+  COMPANY_EMAIL: cleanKey, // defaults to MS_SMTP_USER
+  COMPANY_WEBSITE: z.string().default('https://motordesk-spareparts.onrender.com/'),
+  PLAN_GST_RATE: z.coerce.number().min(0).max(28).default(18),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -74,4 +90,5 @@ export const isR2Configured = Boolean(
     r2KeyProblems.length === 0
 );
 export const isRazorpayConfigured = Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+export const isMailConfigured = Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET && env.MS_SMTP_USER);
 export const isGarageCrmConfigured = Boolean(env.GARAGE_CRM_API_URL && env.GARAGE_CRM_API_KEY);
