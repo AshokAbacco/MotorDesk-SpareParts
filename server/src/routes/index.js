@@ -10,6 +10,7 @@ import marketplaceRoutes from '../marketplace/marketplace.routes.js';
 import notificationsRoutes from '../notifications/notifications.routes.js';
 import onboardingRoutes from '../onboarding/onboarding.routes.js';
 import ordersRoutes from '../orders/orders.routes.js';
+import partnerRoutes from '../partners/partner.routes.js';
 import paymentsRoutes from '../payments/payments.routes.js';
 import posRoutes from '../pos/pos.routes.js';
 import productsRoutes from '../products/products.routes.js';
@@ -42,6 +43,7 @@ router.use('/marketplace', marketplaceRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
 router.use('/onboarding', onboardingRoutes);
 router.use('/admin', adminRoutes);
+router.use('/partner', partnerRoutes); // server-to-server API for partner apps (Motor Konnect)
 router.use('/uploads', uploadsRoutes);
 
 export default router;

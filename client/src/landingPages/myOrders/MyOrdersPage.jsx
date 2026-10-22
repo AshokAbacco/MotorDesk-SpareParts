@@ -78,7 +78,7 @@ export default function MyOrdersPage() {
                   <Link to={`/pay?orders=${o.id}`} className="rounded-lg bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700">Pay now</Link>
                 </div>
               ) : (
-                <OrderTracker status={o.status} />
+                <OrderTracker status={o.status} fulfilment={o.fulfilment} />
               )}
               {o.paymentMode === 'UPI' && o.upiRef && o.paymentStatus === 'PENDING' && o.status === 'PENDING' && (
                 <p className="mt-3 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">UPI payment submitted (ref <span className="font-mono">{o.upiRef}</span>) — waiting for {o.vendor.shopName} to confirm it.</p>

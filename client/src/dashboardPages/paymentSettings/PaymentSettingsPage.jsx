@@ -3,6 +3,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import useFetch from '../../shared/hooks/useFetch.js';
 import Spinner from '../../shared/ui/Spinner.jsx';
+import OrderOptionsCard from './components/OrderOptionsCard.jsx';
 import UpiQrCard from './components/UpiQrCard.jsx';
 import UpiSettingsForm from './components/UpiSettingsForm.jsx';
 import { getUpiSettings, removeUpiSettings, saveUpiSettings } from './paymentSettings.api.js';
@@ -36,10 +37,11 @@ export default function PaymentSettingsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Online payment settings</h1>
-        <p className="text-sm text-slate-500">Receive marketplace payments directly into your own UPI account.</p>
+        <p className="text-sm text-slate-500">Choose delivery, pickup and cash on delivery, and receive UPI payments directly into your own account.</p>
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
+          <OrderOptionsCard />
           <UpiSettingsForm initial={data} onSave={onSave} onRemove={onRemove} saving={saving} />
           <div className="card space-y-2 p-5 text-sm text-slate-600">
             <p className="flex items-center gap-2 font-semibold text-slate-800"><ShieldCheck className="h-4 w-4 text-emerald-600" /> How UPI orders work</p>

@@ -9,8 +9,20 @@ import { buildMeta, getPagination } from '../utils/pagination.js';
 const offerWhere = { isListed: true, stock: { gt: 0 }, vendor: { status: 'APPROVED' } };
 const offerSelect = {
   id: true, price: true, mrp: true, stock: true,
-  vendor: { select: { id: true, shopName: true, city: true, state: true } },
+  vendor: {
+    select: {
+      id: true, shopName: true, city: true, state: true,
+      codEnabled: true, deliveryEnabled: true, deliveryCharge: true, upiId: true,
+    },
+  },
 };
+
+/** Public shop info for an offer: order options, but never the raw UPI ID */
+const shapeVendor = ({ upiId, deliveryCharge, ...v }) => ({
+  ...v,
+  deliveryCharge: Number(deliveryCharge ?? 0),
+  acceptsUpi: Boolean(upiId),
+});
 
 const withGst = (price, rate) => round2(Number(price) * (1 + Number(rate) / 100));
 
@@ -22,7 +34,7 @@ function shapeOffer(o, gstRate) {
     mrp: Number(o.mrp),
     inStock: o.stock,
     discountPct: Number(o.mrp) > 0 ? Math.max(0, Math.round((1 - withGst(o.price, gstRate) / Number(o.mrp)) * 100)) : 0,
-    vendor: o.vendor,
+    vendor: shapeVendor(o.vendor),
   };
 }
 
@@ -146,7 +158,10 @@ export async function related(id, { limit = 12 } = {}) {
 export async function validateCart(items) {
   const rows = await prisma.inventory.findMany({
     where: { id: { in: items.map((i) => i.inventoryId) } },
-    include: { product: true, vendor: { select: { id: true, shopName: true, status: true, upiId: true } } },
+    include: {
+      product: true,
+      vendor: { select: { id: true, shopName: true, status: true, upiId: true, codEnabled: true, deliveryEnabled: true, deliveryCharge: true } },
+    },
   });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return items.map((i) => {
@@ -162,6 +177,10 @@ export async function validateCart(items) {
       gstRate: r ? Number(r.product.gstRate) : 0,
       vendorName: r?.vendor.shopName ?? null,
       upiEnabled: Boolean(r?.vendor.upiId), // this shop can be paid directly by UPI
+      vendorId: r?.vendor.id ?? null,
+      codEnabled: r?.vendor.codEnabled ?? true,
+      deliveryEnabled: r?.vendor.deliveryEnabled ?? true,
+      deliveryCharge: Number(r?.vendor.deliveryCharge ?? 0),
     };
   });
 }

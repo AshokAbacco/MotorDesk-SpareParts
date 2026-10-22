@@ -8,6 +8,7 @@ import { createPayment, ensureRazorpay, refundOrder } from '../payments/payments
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
 import { calculateGst } from '../utils/gst.js';
+import { round2 } from '../utils/money.js';
 import { buildUpiLink } from '../utils/upi.js';
 import { nextOrderNumber } from '../utils/invoiceNumber.js';
 import { buildMeta, getPagination } from '../utils/pagination.js';
@@ -23,13 +24,19 @@ const include = {
  * Customer checkout. A cart can contain parts from several shops,
  * so it is split into one order per vendor — all created atomically.
  *
+ * Fulfilment (per shop settings): DELIVERY to shippingAddress, or PICKUP from the shop.
+ *   A shop with delivery switched off only accepts PICKUP. DELIVERY orders add the
+ *   shop's flat delivery charge. COD on a PICKUP order = "pay at the shop" and is always
+ *   allowed; COD on a DELIVERY order needs the shop's COD switch on.
+ *
  * COD    → orders go straight to PENDING for the shops.
  * UPI    → orders are AWAITING_PAYMENT (stock reserved, hidden from shops). The customer pays each
  *          shop's own UPI ID, submits the UTR, and the shop confirms the money arrived.
  * ONLINE → orders are AWAITING_PAYMENT (stock reserved, hidden from shops) and a single
  *          Razorpay order covers all of them. They become PENDING once payment is verified.
  */
-export async function create(user, { items, shippingAddress, paymentMode }) {
+export async function create(user, { items, shippingAddress, paymentMode, fulfilment = 'DELIVERY' }, { source = null } = {}) {
+  const pickup = fulfilment === 'PICKUP';
   const online = paymentMode === 'ONLINE';
   const upi = paymentMode === 'UPI';
   if (online) ensureRazorpay();
@@ -48,7 +55,13 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
       if (!inv) throw ApiError.badRequest('One of the items is no longer available');
       if (inv.stock < i.quantity) throw ApiError.badRequest(`Only ${inv.stock} left of ${inv.product.name}`);
       if (upi && !inv.vendor.upiId) {
-        throw ApiError.badRequest(`${inv.vendor.shopName} does not accept UPI yet — choose Cash on delivery for this order`);
+        throw ApiError.badRequest(`${inv.vendor.shopName} does not accept UPI yet — choose ${pickup ? 'Pay at shop' : 'Cash on delivery'} for this order`);
+      }
+      if (!pickup && !inv.vendor.deliveryEnabled) {
+        throw ApiError.badRequest(`${inv.vendor.shopName} does not deliver — choose Pick up from shop for this order`);
+      }
+      if (!pickup && paymentMode === 'COD' && !inv.vendor.codEnabled) {
+        throw ApiError.badRequest(`${inv.vendor.shopName} does not accept Cash on delivery — pay by UPI or choose Pick up from shop`);
       }
       if (!groups.has(inv.vendorId)) groups.set(inv.vendorId, { vendor: inv.vendor, lines: [] });
       groups.get(inv.vendorId).lines.push({
@@ -67,18 +80,26 @@ export async function create(user, { items, shippingAddress, paymentMode }) {
         if (r.count === 0) throw ApiError.conflict(`${l.productName} just went out of stock`);
       }
 
-      const gst = calculateGst(lines, { sellerState: vendor.state, buyerState: shippingAddress.state });
+      // Pickup = bought at the shop → intra-state GST. Address keeps the same shape for existing screens.
+      const address = pickup
+        ? { ...shippingAddress, pickup: true, line1: `Pick up at ${vendor.shopName}`, city: vendor.city ?? '', state: vendor.state, pincode: vendor.pincode ?? '' }
+        : shippingAddress;
+      const gst = calculateGst(lines, { sellerState: vendor.state, buyerState: address.state });
+      const deliveryCharge = pickup ? 0 : round2(Number(vendor.deliveryCharge ?? 0));
       const order = await tx.order.create({
         data: {
           orderNumber: await nextOrderNumber(tx, vendorId),
           customerId,
           vendorId,
           paymentMode,
+          fulfilment,
+          deliveryCharge,
+          source,
           status: online || upi ? 'AWAITING_PAYMENT' : 'PENDING',
           subtotal: gst.subtotal,
           taxTotal: gst.taxTotal,
-          grandTotal: gst.grandTotal,
-          shippingAddress,
+          grandTotal: round2(gst.grandTotal + deliveryCharge),
+          shippingAddress: address,
           statusHistory: online || upi ? [] : [{ status: 'PENDING', at: new Date().toISOString() }],
           items: {
             create: gst.lines.map((l) => ({
@@ -195,6 +216,13 @@ export async function updateStatus(vendorId, id, status) {
     if (!order) throw ApiError.notFound('Order not found');
     if (!ORDER_TRANSITIONS[order.status].includes(status)) {
       throw ApiError.badRequest(`Cannot change order from ${order.status} to ${status}`);
+    }
+    // Pickup orders skip "shipped": PACKED (ready for pickup) → DELIVERED (picked up)
+    if (order.fulfilment === 'PICKUP' && status === 'SHIPPED') {
+      throw ApiError.badRequest('Pickup orders are not shipped — mark it Picked up when the customer collects it');
+    }
+    if (order.fulfilment !== 'PICKUP' && order.status === 'PACKED' && status === 'DELIVERED') {
+      throw ApiError.badRequest('Mark the order Shipped before Delivered');
     }
     if (status === 'ACCEPTED' && order.paymentMode === 'UPI' && order.paymentStatus !== 'PAID') {
       throw ApiError.badRequest('Confirm that the UPI payment reached your account before accepting this order');

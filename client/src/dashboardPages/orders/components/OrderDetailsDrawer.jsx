@@ -1,5 +1,6 @@
 // client/src/dashboardPages/orders/components/OrderDetailsDrawer.jsx
-import { Mail, MapPin, Phone, ReceiptText, User, X } from 'lucide-react';
+import { Mail, MapPin, Phone, ReceiptText, Store, User, X } from 'lucide-react';
+import { paymentLabel } from '../../../shared/utils/constants.js';
 import { formatCurrency } from '../../../shared/utils/formatCurrency.js';
 import { formatDateTime } from '../../../shared/utils/formatDate.js';
 import OrderTracker from '../../../landingPages/myOrders/components/OrderTracker.jsx';
@@ -23,7 +24,7 @@ export default function OrderDetailsDrawer({ order, onClose, onUpdated }) {
               <button onClick={onClose} className="rounded-md p-1 hover:bg-slate-100" aria-label="Close"><X className="h-5 w-5" /></button>
             </div>
             <div className="flex-1 space-y-5 overflow-y-auto p-5 text-sm">
-              <OrderTracker status={order.status} />
+              <OrderTracker status={order.status} fulfilment={order.fulfilment} />
 
               {/* Is the customer a garage on the MotorDesk Garage CRM? (matched by phone & email) */}
               {order.crmMatch ? (
@@ -47,12 +48,20 @@ export default function OrderDetailsDrawer({ order, onClose, onUpdated }) {
                 </p>
               )}
 
-              <div>
-                <p className="mb-1 font-semibold text-slate-700">Ship to</p>
-                <p>{order.shippingAddress.name}</p>
-                <p className="flex items-center gap-1 text-slate-500"><Phone className="h-3 w-3" /> {order.shippingAddress.phone}</p>
-                <p className="flex items-start gap-1 text-slate-500"><MapPin className="mt-0.5 h-3 w-3" /> {order.shippingAddress.line1}{order.shippingAddress.landmark ? `, near ${order.shippingAddress.landmark}` : ''}, {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.pincode}</p>
-              </div>
+              {order.fulfilment === 'PICKUP' ? (
+                <div>
+                  <p className="mb-1 flex items-center gap-1.5 font-semibold text-slate-700"><Store className="h-4 w-4 text-sky-600" /> Store pickup</p>
+                  <p>{order.shippingAddress.name} will collect this order from your shop.</p>
+                  <p className="flex items-center gap-1 text-slate-500"><Phone className="h-3 w-3" /> {order.shippingAddress.phone}</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="mb-1 font-semibold text-slate-700">Ship to</p>
+                  <p>{order.shippingAddress.name}</p>
+                  <p className="flex items-center gap-1 text-slate-500"><Phone className="h-3 w-3" /> {order.shippingAddress.phone}</p>
+                  <p className="flex items-start gap-1 text-slate-500"><MapPin className="mt-0.5 h-3 w-3" /> {order.shippingAddress.line1}{order.shippingAddress.landmark ? `, near ${order.shippingAddress.landmark}` : ''}, {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.pincode}</p>
+                </div>
+              )}
               <div>
                 <p className="mb-1 font-semibold text-slate-700">Items</p>
                 <ul className="divide-y divide-slate-100">
@@ -65,8 +74,9 @@ export default function OrderDetailsDrawer({ order, onClose, onUpdated }) {
                 </ul>
                 <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
                   <div className="flex justify-between text-slate-500"><span>GST</span><span>{formatCurrency(order.taxTotal)}</span></div>
+                  {Number(order.deliveryCharge) > 0 && <div className="flex justify-between text-slate-500"><span>Delivery charge</span><span>{formatCurrency(order.deliveryCharge)}</span></div>}
                   <div className="flex justify-between font-semibold"><span>Total</span><span>{formatCurrency(order.grandTotal)}</span></div>
-                  <div className="flex justify-between text-slate-500"><span>Payment</span><span>{order.paymentMode} · <StatusBadge status={order.paymentStatus} /></span></div>
+                  <div className="flex justify-between text-slate-500"><span>Payment</span><span>{paymentLabel(order)} · <StatusBadge status={order.paymentStatus} /></span></div>
                 </div>
               </div>
               {order.invoice && <p className="rounded-lg bg-emerald-50 p-3 text-emerald-700">Invoice {order.invoice.invoiceNumber} generated.</p>}

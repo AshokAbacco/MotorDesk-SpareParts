@@ -55,3 +55,19 @@ export const updateUpi = (vendorId, { upiId, upiName, upiNumber }) =>
 
 export const removeUpi = (vendorId) =>
   prisma.vendor.update({ where: { id: vendorId }, data: { upiId: null, upiName: null, upiNumber: null }, select: upiSelect });
+// ─────────────── Order options (COD / delivery) ───────────────
+
+const orderSettingsSelect = { codEnabled: true, deliveryEnabled: true, deliveryCharge: true, upiId: true };
+const shapeOrderSettings = ({ upiId, deliveryCharge, ...v }) => ({ ...v, deliveryCharge: Number(deliveryCharge), upiEnabled: Boolean(upiId) });
+
+export const getOrderSettings = async (vendorId) =>
+  shapeOrderSettings(await prisma.vendor.findUnique({ where: { id: vendorId }, select: orderSettingsSelect }));
+
+export async function updateOrderSettings(vendorId, { codEnabled, deliveryEnabled, deliveryCharge }) {
+  const updated = await prisma.vendor.update({
+    where: { id: vendorId },
+    data: { codEnabled, deliveryEnabled, deliveryCharge: deliveryEnabled ? deliveryCharge : 0 },
+    select: orderSettingsSelect,
+  });
+  return shapeOrderSettings(updated);
+}

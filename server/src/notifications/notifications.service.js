@@ -93,7 +93,10 @@ const EVENTS = {
   // Customer checked out (COD → goes straight to the shop)
   PLACED: (o) => ({
     customer: { type: 'ORDER_PLACED', title: 'Order placed successfully', body: `${partText(o)} from ${o.vendor.shopName} · ${rupees(o.grandTotal)}. We'll let you know when the shop accepts it.` },
-    vendor: { type: 'ORDER_NEW', title: 'New order received', body: `${partText(o)} · ${qtyText(o)} from ${o.customer.name} · ${rupees(o.grandTotal)} (Cash on delivery)` },
+    vendor: {
+      type: 'ORDER_NEW', title: 'New order received',
+      body: `${partText(o)} · ${qtyText(o)} from ${o.customer.name} · ${rupees(o.grandTotal)} (${o.fulfilment === 'PICKUP' ? 'Store pickup · pay at shop' : 'Cash on delivery'})`,
+    },
   }),
   // UPI checkout created — the shop sees it only after the customer pays
   PLACED_AWAITING_UPI: (o) => ({
@@ -124,15 +127,17 @@ const EVENTS = {
     customer: { type: 'ORDER_ACCEPTED', title: 'Your order has been accepted', body: `${partText(o)} — ${o.vendor.shopName} accepted your order and is preparing it.` },
   }),
   PACKED: (o) => ({
-    customer: { type: 'ORDER_PACKED', title: 'Your order is packed and ready', body: `${partText(o)} is packed by ${o.vendor.shopName} and will be sent out soon.` },
+    customer: o.fulfilment === 'PICKUP'
+      ? { type: 'ORDER_PACKED', title: 'Ready for pickup', body: `${partText(o)} is packed and ready to collect at ${o.vendor.shopName}.` }
+      : { type: 'ORDER_PACKED', title: 'Your order is packed and ready', body: `${partText(o)} is packed by ${o.vendor.shopName} and will be sent out soon.` },
   }),
   SHIPPED: (o) => ({
     customer: { type: 'ORDER_SHIPPED', title: 'Your order is on the way', body: `${partText(o)} has been shipped by ${o.vendor.shopName} and is out for delivery.` },
   }),
   DELIVERED: (o) => ({
     customer: {
-      type: 'ORDER_DELIVERED', title: 'Order delivered',
-      body: `${partText(o)} was delivered${o.paymentMode === 'COD' ? ` · ${rupees(o.grandTotal)} paid` : ''}. Your GST invoice from ${o.vendor.shopName} is ready.`,
+      type: 'ORDER_DELIVERED', title: o.fulfilment === 'PICKUP' ? 'Order picked up' : 'Order delivered',
+      body: `${partText(o)} was ${o.fulfilment === 'PICKUP' ? 'picked up' : 'delivered'}${o.paymentMode === 'COD' ? ` · ${rupees(o.grandTotal)} paid` : ''}. Your GST invoice from ${o.vendor.shopName} is ready.`,
     },
   }),
   CANCELLED_BY_SHOP: (o) => ({
