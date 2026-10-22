@@ -5,7 +5,7 @@ import { attachTenant } from '../middlewares/tenant.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import * as ctrl from './vendors.controller.js';
-import { updateShopSchema, upiSettingsSchema } from './vendors.validation.js';
+import { orderSettingsSchema, updateShopSchema, upiSettingsSchema } from './vendors.validation.js';
 
 const router = Router();
 // Pending vendors can still view/edit their own shop profile
@@ -18,5 +18,9 @@ router.patch('/me', validate({ body: updateShopSchema }), asyncHandler(ctrl.upda
 router.get('/me/upi', asyncHandler(ctrl.getUpi));
 router.put('/me/upi', validate({ body: upiSettingsSchema }), asyncHandler(ctrl.updateUpi));
 router.delete('/me/upi', asyncHandler(ctrl.removeUpi));
+
+// Order options — Cash on delivery / Delivery (off = pickup only) / delivery charge
+router.get('/me/order-settings', asyncHandler(ctrl.getOrderSettings));
+router.put('/me/order-settings', validate({ body: orderSettingsSchema }), asyncHandler(ctrl.updateOrderSettings));
 
 export default router;

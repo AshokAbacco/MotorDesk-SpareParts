@@ -13,7 +13,7 @@ export const ORDER_TRANSITIONS = Object.freeze({
   AWAITING_PAYMENT: [], // moves to PENDING only via a verified Razorpay payment
   PENDING: ['ACCEPTED', 'CANCELLED'],
   ACCEPTED: ['PACKED', 'CANCELLED'],
-  PACKED: ['SHIPPED'],
+  PACKED: ['SHIPPED', 'DELIVERED'], // DELIVERED directly = picked up (PICKUP orders only, checked in orders.service)
   SHIPPED: ['DELIVERED'],
   DELIVERED: [],
   CANCELLED: [],

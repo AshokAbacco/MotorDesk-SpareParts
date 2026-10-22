@@ -40,6 +40,10 @@ const schema = z.object({
   GARAGE_CRM_API_KEY: cleanKey,   // = EXTERNAL_API_KEY in the Garage CRM server's .env
   GARAGE_CRM_CACHE_MINUTES: z.coerce.number().min(1).default(5),
 
+  // Partner apps (Motor Konnect) place orders for their users server-to-server with this key.
+  // Leave empty to switch the /api/v1/partner API off. Use a long random value (32+ chars).
+  PARTNER_API_KEY: cleanKey,
+
   // Microsoft 365 email (Azure app with Microsoft Graph "Mail.Send" application permission)
   MS_TENANT_ID: cleanKey,
   MS_CLIENT_ID: cleanKey,

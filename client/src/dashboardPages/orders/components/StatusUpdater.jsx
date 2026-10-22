@@ -2,16 +2,18 @@ import { ArrowRight, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import Button from '../../../shared/ui/Button.jsx';
-import { NEXT_STATUS } from '../../../shared/utils/constants.js';
+import { nextStatusFor } from '../../../shared/utils/constants.js';
 import { formatCurrency } from '../../../shared/utils/formatCurrency.js';
 import { updateOrderStatus } from '../orders.api.js';
 import UpiPaymentCheck from './UpiPaymentCheck.jsx';
 
 const LABEL = { ACCEPTED: 'Accept order', PACKED: 'Mark packed', SHIPPED: 'Mark shipped', DELIVERED: 'Mark delivered' };
+const PICKUP_LABEL = { ...LABEL, PACKED: 'Ready for pickup', DELIVERED: 'Mark picked up' };
 
 export default function StatusUpdater({ order, onUpdated }) {
   const [busy, setBusy] = useState('');
-  const next = NEXT_STATUS[order.status];
+  const next = nextStatusFor(order);
+  const labels = order.fulfilment === 'PICKUP' ? PICKUP_LABEL : LABEL;
   const canCancel = ['PENDING', 'ACCEPTED'].includes(order.status);
 
   const change = async (status) => {
@@ -26,7 +28,7 @@ export default function StatusUpdater({ order, onUpdated }) {
     setBusy(status);
     try {
       const res = await updateOrderStatus(order.id, status);
-      toast.success(status === 'DELIVERED' ? 'Delivered — invoice generated' : res.data.paymentStatus === 'REFUNDED' ? 'Order cancelled — refund initiated' : `Order ${status.toLowerCase()}`);
+      toast.success(status === 'DELIVERED' ? `${order.fulfilment === 'PICKUP' ? 'Picked up' : 'Delivered'} — invoice generated` : res.data.paymentStatus === 'REFUNDED' ? 'Order cancelled — refund initiated' : `Order ${status.toLowerCase()}`);
       onUpdated(res.data);
     } catch (e) { toast.error(e.message); } finally { setBusy(''); }
   };
@@ -38,7 +40,7 @@ export default function StatusUpdater({ order, onUpdated }) {
   if (!next && !canCancel) return null;
   return (
     <div className="flex flex-wrap gap-2">
-      {next && <Button icon={ArrowRight} loading={busy === next} onClick={() => change(next)}>{LABEL[next]}</Button>}
+      {next && <Button icon={ArrowRight} loading={busy === next} onClick={() => change(next)}>{labels[next]}</Button>}
       {canCancel && <Button variant="secondary" icon={XCircle} loading={busy === 'CANCELLED'} onClick={() => change('CANCELLED')}>Cancel</Button>}
     </div>
   );

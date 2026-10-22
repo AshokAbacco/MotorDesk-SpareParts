@@ -23,3 +23,8 @@ export const upiSettingsSchema = z.object({
   upiName: z.string().trim().min(2, 'Enter the name shown on your UPI account').max(50),
   upiNumber: z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number').optional().or(z.literal('')),
 });
+export const orderSettingsSchema = z.object({
+  codEnabled: z.boolean(),
+  deliveryEnabled: z.boolean(),
+  deliveryCharge: z.coerce.number().min(0, 'Delivery charge cannot be negative').max(5000).default(0),
+});
